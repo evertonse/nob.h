@@ -28,15 +28,15 @@ typedef ptrdiff_t isize;
 
 
 
-#define HEADER "\033[95m"
-#define OKBLUE "\033[94m"
-#define OKCYAN "\033[96m"
-#define OKGREEN "\033[92m"
-#define WARNING "\033[93m"
-#define FAIL "\033[91m"
-#define ENDC "\033[0m"
-#define PRINTBOLD "\033[1m"
-#define UNDERLINE "\033[4m"
+#define CYE_ESCAPE_CODE_HEADER "\033[95m"
+#define CYE_ESCAPE_CODE_OKBLUE "\033[94m"
+#define CYE_ESCAPE_CODE_OKCYAN "\033[96m"
+#define CYE_ESCAPE_CODE_OKGREEN "\033[92m"
+#define CYE_ESCAPE_CODE_WARNING "\033[93m"
+#define CYE_ESCAPE_CODE_FAIL "\033[91m"
+#define CYE_ESCAPE_CODE_ENDC "\033[0m"
+#define CYE_ESCAPE_CODE_PRINTBOLD "\033[1m"
+#define CYE_ESCAPE_CODE_UNDERLINE "\033[4m"
 
 #define RED(msg) FAIL msg ENDC
 #define GREEN(msg) OKGREEN msg ENDC

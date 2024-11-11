@@ -1,6 +1,30 @@
-# nob.h
+# aed.h
 
-This library is the next generation of the [NoBuild](https://github.com/tsoding/nobuild) idea.
+Aedificium, is a fork of no.
+Aedificium, is a fork of no.
+<!-- aedificare -->
+# gw.h - ground work [nob.h](https://github.com/tsoding/nob.h)
+gw_cmd_buod
+preparation made beforehand, .ppm
+is supposed to be wahtever batteries included means, the ideia is to make mutexes, sorting of all kinds, generate clang-d format clangd stuff, globing, cat
+and accumulate crust, but be very useful
+
+# br.h
+This library is the next generation of the idea.
+Foundation:
+
+Base
+Groundwork
+Substructure
+Bedrock
+Support
+Framing:
+
+Structure
+Skeleton
+Framework
+Support system
+Outline
 
 # Quick Example
 
