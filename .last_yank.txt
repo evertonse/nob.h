@@ -1,0 +1,754 @@
+bool nob_mkdir_if_not_exists_recursive(const char *path)
+{
+    if (path == NULL || *path == '\0') {
+        return false;
+    }
+    nob_minimal_log_level = NOB_NO_LOGS;
+    char *path_buf = nob_temp_strdup(path);
+    size_t len = strlen(path_buf);
+    bool created = false;
+    // Remove trailing slashes
+    while (len > 0 && (path_buf[len - 1] == '/' || path_buf[len - 1] == '\\')) {
+        path_buf[--len] = '\0';
+    }
+    // Handle absolute paths on Windows (e.g., "C:\foo")
+    #ifdef _WIN32
+    if (len >= 2 && path_buf[1] == ':') {
+        if (len == 2) {  // Just a drive letter
+            return true;
+        }
+        // Skip drive letter and first slash if present
+        char *p = path_buf + 3;
+        if (*p == '/' || *p == '\\') p++;
+bool nob_mkdir_if_not_exists_recursive(const char *path)
+nob_fd_open_for_read
+Nob_Cmd cmd = {0};
+#define cye_cmd_append(cmd, ...) \
+    cye_da_append_many(cmd, \
+                       ((const char*[]){__VA_ARGS__}), \
+                       (sizeof((const char*[]){__VA_ARGS__})/sizeof(const char*)))
+
+//------------------------------------------------------------------------------------
+// Path Functions
+//------------------------------------------------------------------------------------
+
+bool cye_mkdir_if_not_exists(const char *path);
+bool cye_copy_file(const char *src_path, const char *dst_path);
+bool cye_copy_directory_recursively(const char *src_path, const char *dst_path);
+bool cye_read_entire_dir(const char *parent, Cye_Path_DArray *children);
+bool cye_write_entire_file(const char *path, const void *data, usize size);
+Cye_File_Type cye_get_file_type(const char *path);
+
+ZString cye_base_name(const char *path);
+ZString cye_exists(const char *path); // TODO
+ZString cye_expand_user(ZString path);  // Expand ~ and ~user
+ZString cye_expand_vars(ZString path);  // Expand environment variables
+
+bool cye_rename(const char *old_path, const char *new_path);
+int  cye_needs_rebuild(const char *output_path, const char **input_paths, usize input_paths_count);
+// TODO: cye_needs_rebuild like cmd_append
+int  cye_needs_rebuild1(const char *output_path, const char *input_path);
+int  cye_file_exists(const char *file_path);
+ZString cye_get_current_dir_temp(void);
+bool cye_set_current_dir(const char *path);
+
+bool cye_getsize(ZString path);          // Size  in bytes
+bool cye_is_abs(ZString path);           // Check if path  is absolute
+bool cye_is_file(ZString path);          // Check if path  is regular  file
+bool cye_is_dir(ZString path);           // Check if path  is directory
+bool cye_is_link(ZString path);          // Check if path  is symbolic link
+bool cye_is_mount(ZString path);         // Check if path  is mount    point
+
+Implementation
+ { cye_todo("VAI TRABALHAR VAGABUNDO"); }
+    ;
+
+// Expand environment variables
+// Expand ~ and ~user
+  
+  
+int nob_needs_rebuild(const char *output_path, const char **input_paths, size_t input_paths_count)
+{
+#ifdef _WIN32
+    BOOL bSuccess;
+
+    HANDLE output_path_fd = CreateFile(output_path, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_READONLY, NULL);
+    if (output_path_fd == INVALID_HANDLE_VALUE) {
+        // NOTE: if output does not exist it 100% must be rebuilt
+        if (GetLastError() == ERROR_FILE_NOT_FOUND) return 1;
+        nob_log(NOB_ERROR, "Could not open file %s: %s", output_path, nob_win32_error_message(GetLastError()));
+        return -1;
+    }
+    FILETIME output_path_time;
+    bSuccess = GetFileTime(output_path_fd, NULL, NULL, &output_path_time);
+    CloseHandle(output_path_fd);
+    if (!bSuccess) {
+        nob_log(NOB_ERROR, "Could not get time of %s: %s", output_path, nob_win32_error_message(GetLastError()));
+        return -1;
+    }
+
+    for (size_t i = 0; i < input_paths_count; ++i) {
+        const char *input_path = input_paths[i];
+        HANDLE input_path_fd = CreateFile(input_path, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_READONLY, NULL);
+        if (input_path_fd == INVALID_HANDLE_VALUE) {
+            // NOTE: non-existing input is an error cause it is needed for building in the first place
+            nob_log(NOB_ERROR, "Could not open file %s: %s", input_path, nob_win32_error_message(GetLastError()));
+            return -1;
+        }
+        FILETIME input_path_time;
+        bSuccess = GetFileTime(input_path_fd, NULL, NULL, &input_path_time);
+        CloseHandle(input_path_fd);
+        if (!bSuccess) {
+            nob_log(NOB_ERROR, "Could not get time of %s: %s", input_path, nob_win32_error_message(GetLastError()));
+            return -1;
+        }
+
+        // NOTE: if even a single input_path is fresher than output_path that's 100% rebuild
+        if (CompareFileTime(&input_path_time, &output_path_time) == 1) return 1;
+    }
+
+    return 0;
+#else
+    struct stat statbuf = {0};
+
+    if (stat(output_path, &statbuf) < 0) {
+        // NOTE: if output does not exist it 100% must be rebuilt
+        if (errno == ENOENT) return 1;
+        nob_log(NOB_ERROR, "could not stat %s: %s", output_path, strerror(errno));
+        return -1;
+    }
+    int output_path_time = statbuf.st_mtime;
+
+    for (size_t i = 0; i < input_paths_count; ++i) {
+        const char *input_path = input_paths[i];
+        if (stat(input_path, &statbuf) < 0) {
+            // NOTE: non-existing input is an error cause it is needed for building in the first place
+            nob_log(NOB_ERROR, "could not stat %s: %s", input_path, strerror(errno));
+            return -1;
+        }
+        int input_path_time = statbuf.st_mtime;
+        // NOTE: if even a single input_path is fresher than output_path that's 100% rebuild
+        if (input_path_time > output_path_time) return 1;
+    }
+
+    return 0;
+#endif
+}
+
+int cye_needs_rebuild(const char *output_path, const char **input_paths, usize input_paths_count) {
+int cye_needs_rebuild(const char *output_path, const char **input_paths, usize input_paths_count) {
+
+int nob_needs_rebuild(const char *output_path, const char **input_paths, size_t input_paths_count)
+
+    cye_todo("VAI TRABALHAR VAGABUNDO");
+}
+
+    BOOL bSuccess;
+
+    HANDLE output_path_fd = CreateFile(output_path, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_READONLY, NULL);
+    if (output_path_fd == INVALID_HANDLE_VALUE) {
+        // NOTE: if output does not exist it 100% must be rebuilt
+        if (GetLastError() == ERROR_FILE_NOT_FOUND) return 1;
+        nob_log(NOB_ERROR, "Could not open file %s: %s", output_path, nob_win32_error_message(GetLastError()));
+        return -1;
+    }
+    FILETIME output_path_time;
+    bSuccess = GetFileTime(output_path_fd, NULL, NULL, &output_path_time);
+    CloseHandle(output_path_fd);
+    if (!bSuccess) {
+        nob_log(NOB_ERROR, "Could not get time of %s: %s", output_path, nob_win32_error_message(GetLastError()));
+        return -1;
+    }
+
+    for (size_t i = 0; i < input_paths_count; ++i) {
+        const char *input_path = input_paths[i];
+        HANDLE input_path_fd = CreateFile(input_path, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_READONLY, NULL);
+        if (input_path_fd == INVALID_HANDLE_VALUE) {
+            // NOTE: non-existing input is an error cause it is needed for building in the first place
+            nob_log(NOB_ERROR, "Could not open file %s: %s", input_path, nob_win32_error_message(GetLastError()));
+            return -1;
+        }
+        FILETIME input_path_time;
+        bSuccess = GetFileTime(input_path_fd, NULL, NULL, &input_path_time);
+        CloseHandle(input_path_fd);
+        if (!bSuccess) {
+            nob_log(NOB_ERROR, "Could not get time of %s: %s", input_path, nob_win32_error_message(GetLastError()));
+            return -1;
+        }
+
+        // NOTE: if even a single input_path is fresher than output_path that's 100% rebuild
+        if (CompareFileTime(&input_path_time, &output_path_time) == 1) return 1;
+    }
+
+    return 0;
+
+#else
+    struct stat statbuf = {0};
+
+#else
+
+
+
+
+
+ {
+nob_log(NOB_ERROR
+                                                                                                                      
+nob_temp_alloc(size_t
+
+char *nob_temp_strdup(const char *cstr)
+{
+    size_t n = strlen(cstr);
+    char *result = nob_temp_alloc(n + 1);
+    NOB_ASSERT(result != NULL && "Increase NOB_TEMP_CAPACITY");
+    memcpy(result, cstr, n);
+    result[n] = '\0';
+    return result;
+}
+
+void *nob_temp_alloc(size_t size)
+{
+    if (nob_temp_size + size > NOB_TEMP_CAPACITY) return NULL;
+    void *result = &nob_temp[nob_temp_size];
+    nob_temp_size += size;
+    return result;
+}
+
+char *nob_temp_sprintf(const char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    int n = vsnprintf(NULL, 0, format, args);
+    va_end(args);
+
+    NOB_ASSERT(n >= 0);
+    char *result = nob_temp_alloc(n + 1);
+    NOB_ASSERT(result != NULL && "Extend the size of the temporary allocator");
+    // TODO: use proper arenas for the temporary allocator;
+    va_start(args, format);
+    vsnprintf(result, n + 1, format, args);
+    va_end(args);
+
+    return result;
+}
+
+void nob_temp_reset(void)
+{
+    nob_temp_size = 0;
+}
+
+size_t nob_temp_save(void)
+{
+    return nob_temp_size;
+}
+
+void nob_temp_rewind(size_t checkpoint)
+{
+    nob_temp_size = checkpoint;
+}
+
+
+//------------------------------------------------------------------------------------
+// Temporary Storage Functions
+//------------------------------------------------------------------------------------
+char  *cye_tstrdup(const char *cstr);
+void  *cye_talloc(usize size);
+char  *cye_tprintf(const char *format, ...);
+void  cye_temp_treset(void);
+usize cye_temp_save(void);
+void  cye_temp_rewind(usize checkpoint);
+
+Path Functions
+//------------------------------------------------------------------------------------
+// Temporary Storage Functions
+//------------------------------------------------------------------------------------
+
+Functions 
+Functions
+
+char *nob_temp_strdup(const char *cstr)
+{
+    size_t n = strlen(cstr);
+    char *result = nob_temp_alloc(n + 1);
+    NOB_ASSERT(result != NULL && "Increase NOB_TEMP_CAPACITY");
+    memcpy(result, cstr, n);
+    result[n] = '\0';
+    return result;
+}
+
+void *nob_temp_alloc(size_t size)
+{
+    if (nob_temp_size + size > NOB_TEMP_CAPACITY) return NULL;
+    void *result = &nob_temp[nob_temp_size];
+    nob_temp_size += size;
+    return result;
+}
+
+char *nob_temp_sprintf(const char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    int n = vsnprintf(NULL, 0, format, args);
+    va_end(args);
+
+    NOB_ASSERT(n >= 0);
+    char *result = nob_temp_alloc(n + 1);
+    NOB_ASSERT(result != NULL && "Extend the size of the temporary allocator");
+    // TODO: use proper arenas for the temporary allocator;
+    va_start(args, format);
+    vsnprintf(result, n + 1, format, args);
+    va_end(args);
+
+    return result;
+}
+
+void nob_temp_reset(void)
+{
+    nob_temp_size = 0;
+}
+
+size_t nob_temp_save(void)
+{
+    return nob_temp_size;
+}
+
+void nob_temp_rewind(size_t checkpoint)
+{
+    nob_temp_size = checkpoint;
+}
+
+
+
+char *nob_temp_strdup(const char *cstr)
+{
+    size_t n = strlen(cstr);
+    char *result = nob_temp_alloc(n + 1);
+    NOB_ASSERT(result != NULL && "Increase NOB_TEMP_CAPACITY");
+    memcpy(result, cstr, n);
+    result[n] = '\0';
+    return result;
+}
+
+void *nob_temp_alloc(size_t size)
+{
+    if (nob_temp_size + size > NOB_TEMP_CAPACITY) return NULL;
+    void *result = &nob_temp[nob_temp_size];
+    nob_temp_size += size;
+    return result;
+}
+
+char *nob_temp_sprintf(const char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    int n = vsnprintf(NULL, 0, format, args);
+    va_end(args);
+
+    NOB_ASSERT(n >= 0);
+    char *result = nob_temp_alloc(n + 1);
+    NOB_ASSERT(result != NULL && "Extend the size of the temporary allocator");
+    // TODO: use proper arenas for the temporary allocator;
+    va_start(args, format);
+    vsnprintf(result, n + 1, format, args);
+    va_end(args);
+
+    return result;
+}
+
+void nob_temp_reset(void)
+{
+    nob_temp_size = 0;
+}
+
+size_t nob_temp_save(void)
+{
+    return nob_temp_size;
+}
+
+void nob_temp_rewind(size_t checkpoint)
+{
+    nob_temp_size = checkpoint;
+}
+
+
+char  *cye_tstrdup(const char *cstr);
+
+char *nob_temp_strdup(const char *cstr)
+
+void  *cye_talloc(usize size);
+
+void *nob_temp_alloc(size_t size)
+
+char  *cye_tprintf(const char *format, ...);
+
+char *nob_temp_sprintf(const char *format, ...)
+
+ZString
+Z
+typedef const char* ZString;
+
+Z
+// Temporary String
+TEMP_CAPACITY
+CYE_TEMP_CAPACITY
+rawptr
+temp_size
+temp_data
+temp_data
+rawptr cye_talloc(usize size); {
+
+
+nob_temp_size
+nob_temp[
+temp_data.size
+NOB_ASSERT
+TString
+const 
+TString
+char  *cye_tstrdup(const char *cstr);
+
+void  *cye_talloc(usize size);
+
+void  *cye_talloc(usize size);
+
+char  *cye_tprintf(const char *format, ...);
+
+TString cye_tprintf(ZString fmt, ...);
+
+char  *cye_tprintf(const char *format, ...);
+
+cye_treset
+cye_temp_reset
+cye_temp_reset
+void  cye_temp_reset(void);
+usize cye_temp_save(void);
+
+cye_temp_reset
+void  cye_temp_reset(void);
+usize cye_temp_save(void);
+void  cye_temp_rewind(usize checkpoint);
+
+void  cye_temp_reset(void);
+
+void cye_treset(void) {
+
+usize cye_temp_save(void);
+
+usize cye_temp_save(void);
+
+void  cye_temp_rewind(usize checkpoint);
+
+void  cye_temp_rewind(usize checkpoint);
+
+char  *cye_tprintf(const char *format, ...);
+
+cye_
+Z
+TString
+:
+      
+temp_data
+;
+  
+  
+    
+  
+  
+    cye_trace_log(CYE_LOG_INFO, "Fuck you");
+
+File_Handle
+_CYE_NO_SHORT_NAMES_
+SHORT_NAMES
+CYE_NO_SHORT_NAMES
+CYE_STRIP_PREFIX
+CYE_NO_SHORT_NAMES
+_CYE_NO_SHORT_NAMES_
+
+
+CYE_IMPLEMENTATION
+#define _CYE_H_
+
+_CYE_H_
+#endif // CYE_IMPLEMENTATION
+
+_CYE_H_
+/*..................................................................................
+ .                                                                                 .
+ .                                IMPLEMENETATION                                  .
+ .                                                                                 .
+ ...................................................................................
+*/
+
+//------------------------------------------------------------------------------------
+// Process and File Functions
+//------------------------------------------------------------------------------------
+Cye_File_Handle cye_open_for_write(const char *path);
+void cye_file_close(Cye_File_Handle handle);
+bool cye_process_wait_all(Cye_Process_DArray procs);
+bool cye_process_wait_all_and_reset(Cye_Process_DArray *procs);
+bool cye_process_wait(Cye_Process proc); // Wait until the process has finished
+
+//------------------------------------------------------------------------------------
+// Commands Functions
+//------------------------------------------------------------------------------------
+#define cye_cmd_append(cmd, ...) \
+    cye_da_append_many(cmd, \
+                       ((const char*[]){__VA_ARGS__}), \
+                       (sizeof((const char*[]){__VA_ARGS__})/sizeof(const char*)))
+
+#define cye_cmd_extend(cmd, other_cmd) \
+    cye_da_append_many(cmd, (other_cmd)->items, (other_cmd)->count)
+
+// Free all the memory allocated by command arguments
+#define cye_cmd_free(cmd) CYE_FREE(cmd.items)
+
+// Render a string representation of a command into a dynamic string.
+void cye_ds_write_cmd(Cye_DString *ds, Cye_Command cmd);
+
+// Run redirected command asynchronously
+Cye_Process cye_cmd_run_async_and_reset(Cye_Command *cmd);
+
+// Run redirected command asynchronously and reset count
+Cye_Process cye_cmd_run_async_redirect(Cye_Command cmd, Cye_Command_Redirect redirect);
+
+// Run redirected command asynchronously and set cmd.count to 0 and close all the opened files
+Cye_Process cye_cmd_run_async_redirect_and_reset(Cye_Command *cmd, Cye_Command_Redirect redirect);
+
+// Run command asynchronously
+#define cye_cmd_run_async(cmd) cye_cmd_run_async_redirect(cmd, (Cye_Command_Redirect) {0}) 
+
+// Run command synchronously
+bool cye_cmd_run_sync(Cye_Command cmd);
+
+bool cye_cmd_run_sync_and_reset(Cye_Command *cmd);
+
+// Run redirected command synchronously
+bool cye_cmd_run_sync_redirect(Cye_Command cmd, Cye_Command_Redirect redirect);
+
+// Run redirected command synchronously and set cmd.count to 0 and close all the opened files
+bool cye_cmd_run_sync_redirect_and_reset(Cye_Command *cmd, Cye_Command_Redirect redirect);
+
+#if !defined(CYE_REBUILD_COMMAND)
+#  ifdef _WIN32
+#    if defined(__GNUC__)
+#       define CYE_REBUILD_COMMAND(binary_path, source_path) "gcc", "-o", binary_path, source_path
+#    elif defined(__clang__)
+#       define CYE_REBUILD_COMMAND(binary_path, source_path) "clang", "-o", binary_path, source_path
+#    elif defined(_MSC_VER)
+#       if defined(__clang__)
+#           define CYE_REBUILD_COMMAND(binary_path, source_path) "clang-cl.exe", cye_tprintf("/Fe:%s", (binary_path)), source_path
+#       else
+#           define CYE_REBUILD_COMMAND(binary_path, source_path) "cl.exe", cye_tprintf("/Fe:%s", (binary_path)), source_path
+#       endif
+#    endif
+#  else
+#    define CYE_REBUILD_COMMAND(binary_path, source_path) "cc", "-o", binary_path, source_path
+#  endif
+#endif
+
+// Sean Barret Style in-between `__`
+// void cye__rebuild_ourselves(const char *source_path, int argc, char **argv);
+void cye__rebuild_ourselves(ZString source_path, int argc, ZString *argv);
+#define cye_rebuild_ourselves(argc, argv) cye__rebuild_ourselves(__FILE__, argc, argv)
+
+
+//------------------------------------------------------------------------------------
+// Temporary Storage Functions
+//------------------------------------------------------------------------------------
+char  *cye_tstrdup(const char *cstr);
+void  *cye_talloc(usize size);
+TString cye_tprintf(ZString fmt, ...);
+
+void  cye_temp_reset(void);
+usize cye_temp_save(void);
+void  cye_temp_rewind(usize checkpoint);
+
+//------------------------------------------------------------------------------------
+// Path Functions
+//------------------------------------------------------------------------------------
+
+bool cye_mkdir_if_not_exists(const char *path);
+bool cye_copy_file(const char *src_path, const char *dst_path);
+bool cye_copy_directory_recursively(const char *src_path, const char *dst_path);
+bool cye_read_entire_dir(const char *parent, Cye_Path_DArray *children);
+bool cye_write_entire_file(const char *path, const void *data, usize size);
+Cye_File_Type cye_get_file_type(const char *path);
+
+ZString cye_base_name(const char *path);
+ZString cye_exists(const char *path); // TODO
+ZString cye_expand_user(ZString path);  // Expand ~ and ~user
+ZString cye_expand_vars(ZString path);  // Expand environment variables
+
+bool cye_rename(const char *old_path, const char *new_path);
+int  cye_needs_rebuild(const char *output_path, const char **input_paths, usize input_paths_count);
+// TODO: cye_needs_rebuild like cmd_append
+int  cye_needs_rebuild1(const char *output_path, const char *input_path);
+int  cye_file_exists(const char *file_path);
+ZString cye_get_current_dir_temp(void);
+bool cye_set_current_dir(const char *path);
+
+bool cye_getsize(ZString path);          // Size  in bytes
+bool cye_is_abs(ZString path);           // Check if path  is absolute
+bool cye_is_file(ZString path);          // Check if path  is regular  file
+bool cye_is_dir(ZString path);           // Check if path  is directory
+bool cye_is_link(ZString path);          // Check if path  is symbolic link
+bool cye_is_mount(ZString path);         // Check if path  is mount    point
+
+bool        cye_is_same_path(ZString path1, ZString path2);  // Check if paths reference same file (one can be absolute and another relative or on be a hard link)
+Cye_DString cye_join(ZString path, ZString* paths);         // Join paths intelligently
+
+ZString cye_realpath(ZString path);                     // Return real path (resolve symlinks)
+ZString cye_relpath(ZString path, ZString path_start);  //  Return relative path
+
+ZString cye_home(void);  //  Return home
+ZString cye_cwd(void);  //  Return current directory
+ZString cye_parent_dir(ZString path);
+ZString cye_path_owner(ZString path);
+ZString cye_dir_remove(ZString path);
+ZString cye_file_remove(ZString path);
+ZString cye_path_stem(ZString path);  // without extension
+ZString cye_path_ext(ZString path);   // extension
+ZString cye_path_touch(ZString path);  // extension
+
+bool cye_chdir(ZString path);  // Change current working directory
+bool cye_mkdir(ZString path);  // Create directory
+bool cye_mkdirs(ZString path);  // Create directories recursively
+bool cye_remove(ZString path);  //  Remove file
+bool cye_remove_dir(ZString path);  //  Remove directory
+bool cye_remove_dirs(ZString path);  //  Remove directories recursively
+bool cye_path_rename(ZString src, ZString dst);  //  Rename file or directory
+bool cye_path_renames(ZString old, ZString new);  //  Recursive directory or file renaming
+bool cye_replace(ZString src, ZString dst);  //  Rename file or directory, replacing if exists
+// Paths valid for one func call much like TextFormat from Raylib
+Cye_Path_DArray cye_path_scandir(ZString path);  //  Iterator of directory entries
+// bool cye_path_walk(funct)  //  Generate directory tree
+
+
+//------------------------------------------------------------------------------------
+// Dynamic Array
+//------------------------------------------------------------------------------------
+
+// Append an item to a dynamic array
+#define cye_da_append(da, item)                                                            \
+    do {                                                                                   \
+        if ((da)->count >= (da)->capacity) {                                               \
+            (da)->capacity = (da)->capacity == 0 ?                                         \
+                CYE_DARRAY_INIT_CAP :                                                      \
+                (da)->capacity*CYE_DARRAY_CAP_MULTIPLIER;                                  \
+            (da)->items = cye_realloc((da)->items, (da)->capacity*sizeof(*(da)->items));   \
+            assert((da)->items != NULL && "Buy more RAM lol");                             \
+        }                                                                                  \
+                                                                                           \
+        (da)->items[(da)->count++] = (item);                                               \
+    } while (0)
+
+#define cye_da_free(da) cye_free((da).items)
+
+#define cye_da_append_many(da, new_items, new_items_count)                                      \
+    do {                                                                                        \
+        if ((da)->count + (new_items_count) > (da)->capacity) {                                 \
+            if ((da)->capacity == 0) {                                                          \
+                (da)->capacity = CYE_DARRAY_INIT_CAP;                                           \
+            }                                                                                   \
+            while ((da)->count + (new_items_count) > (da)->capacity) {                          \
+                (da)->capacity *= 2;                                                            \
+            }                                                                                   \
+            (da)->items = cye_realloc((da)->items, (da)->capacity*sizeof(*(da)->items));        \
+            assert((da)->items != NULL && "Dynamic Array: OOM");                                \
+        }                                                                                       \
+        memcpy((da)->items + (da)->count, (new_items), (new_items_count)*sizeof(*(da)->items)); \
+        (da)->count += (new_items_count);                                                       \
+    } while (0)
+
+
+//------------------------------------------------------------------------------------
+// String Functions
+//------------------------------------------------------------------------------------
+
+// printf macros for String_View
+#ifndef SV_FMT
+#   define SV_FMT "%.*s"
+#endif // SV_Fmt
+#ifndef SV_ARG
+#   define SV_ARG(sv) (int) (sv).count, (sv).data
+#endif // SV_Arg
+
+// TODO: Generic Slicing
+typedef struct {
+    size_t count;
+    const char *data;
+} Cye_String_Slice;
+
+// ZString nob_temp_sv_to_zstr(Cye_String_Slice sv);
+bool cye_zstr_ends_with(ZString src, ZString ending);
+
+// TODO: Add String Slices Functions as we need
+
+
+//----------------------------------------------------------------------------------
+// Dynamic String Functions
+//----------------------------------------------------------------------------------
+#define cye_ds_write(ds, buf, size) cye_da_append_many(ds, buf, size)
+
+// TODO make write_zstr the default and  write -> write_char
+#define cye_ds_write_zstr(ds, zstr)   \
+    do {                              \
+        const char *s = (zstr);       \
+        size_t n = strlen(s);         \
+        cye_da_append_many(ds, s, n); \
+    } while (0)
+
+#define cye_ds_write_zero(ds) cye_da_append_many(ds, "", 1)
+
+// Free the memory allocated by a string builder
+#define cye_dstring_free(ds) CYE_FREE((ds).items)
+
+#define cye_dstring_printf(ds, fmt, ...) CYE_TODO("LOOL");
+
+
+//----------------------------------------------------------------------------------
+// Mathematics Functions
+//----------------------------------------------------------------------------------
+#ifndef max
+#   define max(value1, value2) ((value1) > (value2)) ? (value1) : (value2);
+#endif
+
+#ifndef min
+#   define min(value1, value2) ((value1) < (value2)) ? (value1) : (value2);
+#endif
+
+// Clamp float value
+f32 clamp(f32 value, f32 min, f32 max);
+
+// Calculate linear interpolation between two floats
+f32 lerp(f32 start, f32 end, f32 amount);
+
+// Normalize input value within input range
+f32 normalize(f32 value, f32 start, f32 end);
+
+// Remap input value within input range to output range
+f32 remap(f32 value, f32 inputStart, f32 inputEnd, f32 outputStart, f32 outputEnd);
+
+// Wrap input value from min to max
+f32 wrap(f32 value, f32 min, f32 max);
+
+// Check whether two given f32s are almost equal
+int float_equals(f32 x, f32 y);
+
+//------------------------------------------------------------------------------------
+// Process and File Functions
+//------------------------------------------------------------------------------------
+Cye_File_Handle cye_open_for_read(const char *path);
+Cye_File_Handle cye_open_for_write(const char *path);
+void cye_file_close(Cye_File_Handle fh);
+
+//------------------------------------------------------------------------------------
+// Utils Functions
+//------------------------------------------------------------------------------------
+void cye_trace_log(Cye_Log_Level level, const char *fmt, ...);
+const char *cye_cpu_architecture(void);
+
+#endif // _CYE_H_
+
+
+
