@@ -23,3 +23,915 @@ bool nob_mkdir_if_not_exists_recursive(const char *path)
 bool nob_mkdir_if_not_exists_recursive(const char *path)
 nob_fd_open_for_read
 Nob_Cmd cmd = {0};
+        {"//bin////lol ", "/dsadas/",       "/bin/lol/dsadas/"},
+
+        {"//bin////lol ", "/dsadas/",       "/bin/lol/dsadas/"},
+
+normal.txt
+dsadas/
+  
+  
+3
+3
+            const char *path2 = test_cases[i][1];
+
+2
+1
+2
+path3
+4
+4
+ 
+`%s
+`%s`
+'%s'
+'%s
+            bool prev_is_sep  = ds.count > 0 && (ds.items[ds.count-1] == PATH_SEPARATOR_CHAR);
+
+ds.count > 0 && (ds.items[ds.count-1] == PATH_SEPARATOR_CHAR);
+        {"//bin////lol",  "/dsadas/",      "",  "/bin/lol/dsadas/"},
+
+>>> Path("./","dir", "file",".txt")
+PosixPath('dir/file/.txt')
+
+
+>>> Path("./","dir", "file",".txt")
+PosixPath('dir/file/.txt')
+
+   
+file
+ '%s'
+ 
+_
+path2
+`%s`, `%s`and `%s`
+'%s' and '%s'
+path2
+2
+:
+:
+:
+    last_i
+
+        total_length += strlen(paths[i]);
+
+ck
+        
+
+    usz total_length = 0;
+
+path_count
+count
+coun
+count
+ 
+traling_empty_count
+strlen(paths[i])
+len
+traling_empty_count
+        count += 1;
+
+            traling_empty_count += 1;
+
+1
+traling_empty_count
+usz paths_count
+traling_empty_count
+paths_count
+traling_empty_count
+    traling_empty_count
+
+
+
+usz 
+ 
+ 
+space in beteen
+test
+s
+special-
+, three or nmore
+/
+space-around 
+  space-around 
+//log////
+         
+            
+                
+.dotfiles/../donwloads/' but got '.dotfiles/../downloads/
+.dotfiles/../donwloads/' but got '.dotfiles/../downloads/
+downloads
+donwloads
+        cye_trace_log(CYE_LOG_TRACE, "path[%d/%d] = %s", idx, paths_count-1, paths[idx]);
+
+    for (usz idx = 0; idx < paths_count; idx += 1) {
+    }
+
+            bool prev_is_sep = ds.count > 0 && (ds.items[ds.count-1] == PATH_SEPARATOR_CHAR);
+
+ds
+ds.capacity
+    void* (*alloc)(usz size);
+
+.alloc = cye_talloc
+t
+.realloc = cye_trealloc,
+void cye_tfree(rawptr ptr) {
+    cye_trace_log(CYE_LOG_TRACE, "Temporary allocator freed");
+}
+
+cye_realloc
+cye_realloc
+realloc (void *__ptr, size_t __size)
+extern void *realloc (void *__ptr, size_t __size)
+
+void *realloc (void *__ptr, size_t __size)
+void *realloc (void *__ptr, size_t __size)
+usz
+size_t
+    void* (*realloc)(usz size);
+
+cye_trealloc
+cye_trealloc
+realloc
+
+
+    if (temp_data.size + size > CYE_TEMP_CAPACITY) return NULL;
+
+temp_data.buffer[temp_data.size];
+&temp_data.buffer[0]
+    byte* temp_start = &temp_data.buffer[0];
+
+    byte*  = &temp_data.buffer[0];
+
+temp_start_ptr
+=
+byte*
+temp_start_ptr
+diff
+diff
+    
+
+    isize diff =  (byte*)ptr - temp_start_ptr;
+    if (temp_data.size + size > CYE_TEMP_CAPACITY) return NULL;
+
+diff
+temp_data.size
+-
+temp_data.size
+    assert(diff > 0);
+
+need_this_much
+diff
+need_this_much
+    temp_data.size += size;
+
+    temp_data.size - 
+
+need_this_much
+size
+need_this_much
+return NULL;
+void *cye_trealloc(void *ptr, usz size) {
+
+thread_local Cye_Context cye_context = {.alloc = cye_malloc, .free = cye_free};
+
+cye_context
+context
+void *cye_trealloc(void *ptr, usz size) {
+
+oid *cye_trealloc(void *ptr, usz size) {
+ {
+void *cye_trealloc(void *ptr, usz size) {
+    byte* temp_start_ptr = &temp_data.buffer[0];
+
+    isz diff =  (byte*)ptr - temp_start_ptr;
+    assert(diff > 0);
+
+    usz need_this_much =  size - diff;
+    assert(need_this_much > 0);
+
+    if (temp_data.size + need_this_much> CYE_TEMP_CAPACITY) {
+        return NULL;
+    }
+
+    temp_data.size += need_this_much;
+
+    return ptr;
+}
+
+rawptr
+cye_trealloc
+void cye_tfree(rawptr ptr) {
+    cye_trace_log(CYE_LOG_TRACE, "Temporary allocator freed");
+}
+
+
+
+;
+// Should have been an upperbound on allocated stuff
+#define cye_unreachable(msg) do { fprintf(stderr, "%s:%d: %s UNREACHABLE: %s\n",__FILE__, __LINE__,__PRETTY_FUNCTION__,  msg); abort(); } while(0)
+
+unreachable
+cye_panic
+cye_panic
+DS_FMT
+DS_FMT
+"kkk=%s
+DS_ARG()
+kkk
+DS_FMT, 
+ds_fmt_arg
+DS_FMT
+cye_ds_fmt_arg
+cye_ds_fmt_arg
+cye_ds_
+#define ds_write_cmd                     cye_ds_write_cmd
+
+cye_ds_fmt_arg
+ds_write_cmd
+                     cye_ds_write_cmd
+cye_ds_fmt_arg
+#define cye_ds_fmt_arg
+
+_arg
+cye_ds_fmt_arg
+
+cye_ds_fmt
+cye_ds_fmt_arg
+c
+c
+y
+y
+e
+e
+_
+_
+#define ds_fmt                           cye_ds_fmt
+#define ds_fmt_arg                       cye_ds_fmt_arg
+
+#define da_fmt                           ".count
+#define da_fmt_arg                       cye_ds_fmt_arg
+// Render a string representation of a command into a dynamic string.
+
+#define da_fmt                           ".count
+#define da_fmt_arg                       cye_ds_fmt_arg
+
+                     ".count
+                      cye_ds_fmt_arg
+      
+(da).count
+.
+count
+ 
+cye_da_fmt
+#define da_append      cye_da_append
+
+cye_da_fmt
+cye_da_append
+da_append
+#define da_fmt      cye_da_fmt
+
+cye_da_fmt
+
+s
+_arg
+s
+#define ds_fmt                           cye_ds_fmt
+#define ds_fmt_arg                       cye_ds_fmt_arg
+
+e
+    const char *test_cases[][4] = {
+        // Each row contains: {path1, path2, expected_result}
+        {"//bin////lol",  "",                "/dsadas/",       "/bin/lol/dsadas/"         },
+        {"./dir",         "file",            ".txt",           "./dir/file/.txt"          },
+        {"./dir/",        "",                "/normal.txt",    "./dir/normal.txt"         },
+        {"/usr///local/", "",                "//bin/",         "/usr/local/bin/"          },
+        {"/home/",        "",                "/user//",        "/home/user/"              },
+        {"",              "//log////",                "",      "/log/"                    },
+        {"/tmp",          "space in beteen", "",               "/tmp/space in beteen"     },
+        {"local",         " space-around ",  "dir/",           "local/ space-around /dir/"},
+        {"//etc//",       "",                "///config//",    "/etc/config/"             },
+        {".dotfiles",     "",                "..//downloads/", ".dotfiles/../downloads/"  },
+        {"..",            "double-dot",      "..",             "../double-dot/../"        }, // Double doit has to end in path separator, same for one dot
+        {".",             "...",             "",               "./..."                    }, // Thress dots are not special
+        {".///",          ".",               "/.",             "."                        }, // We should supress /./ in the middle and it sould end with /
+        // Add more test cases as needed
+    };
+
+    const usz num_tests = count_of(test_cases);
+    assert( num_tests == (sizeof(test_cases) / sizeof(test_cases[0])) && "We Should be balling but we're not");
+    usz tests_passed = 0;
+
+    {
+        context         = temp_context();
+        usz checkpoint  = temp_save();
+
+        for (usz i = 0; i < num_tests; i++) {
+            const char *path1 = test_cases[i][0];
+            const char *path2 = test_cases[i][1];
+            const char *path3 = test_cases[i][2];
+            const char *expected = test_cases[i][3];
+
+            char *result = path_create(path1, path2, path3);
+            
+            if (result == NULL) {
+                trace_log(LOG_ERROR, "Test %zu failed, path_create returned NULL for inputs `%s`, `%s` and `%s`", i, path1, path2, path3);
+                continue;
+            }
+
+            if (0 == strcmp(result, expected)) {
+                trace_log(LOG_INFO, "Test %zu passed, '%s' + '%s' + '%s' -> '%s'", i, path1, path2, path3, result);
+                tests_passed++;
+            } else {
+                trace_log(LOG_ERROR, "Test %zu failed, expected '%s' but got '%s' for inputs `%s`, `%s` and `%s`", i, expected, result, path1, path2, path3);
+            }
+
+        }
+
+        context = default_context();
+        temp_rewind(checkpoint);
+    }
+
+    trace_log(LOG_INFO, "Path creation tests complete: %zu/%zu passed",
+            tests_passed, num_tests);
+
+    // Optional: make the test suite fail if not all tests passed
+    if (tests_passed != num_tests) {
+        trace_log(LOG_ERROR, "Some path creation tests failed!");
+        exit(1);
+    }
+
+    da_append(&da, 1);
+
+1
+    da_append(&da, 2);
+
+2
+temp_data
+temp_data
+temp_data
+threshold_log_level
+threshold_log_level
+//------------------------------------------------------------------------------------
+// Global Variables Definition
+//------------------------------------------------------------------------------------
+
+static struct {
+    usz size;
+    byte buffer[CYE_TEMP_CAPACITY];
+} cye_temp_data = {0};
+
+static Cye_Log_Level cye_threshold_log_level = CYE_LOG_INFO;
+
+thread_local Cye_Context cye_context = {.alloc = cye_malloc, .free = cye_free};
+
+
+#define context          cye_context
+#define temp_context     cye_temp_context
+
+static struct {
+    usz size;
+    byte buffer[CYE_TEMP_CAPACITY];
+}
+ = {.alloc = cye_malloc, .free = cye_free};
+ = CYE_LOG_INFO;
+ = {0};
+
+
+
+
+
+
+cye_temp_data
+cye_threshold_log_level
+cye_context
+c
+c
+c
+y
+y
+y
+e
+e
+e
+_
+_
+_
+    contex.realloc()
+
+    DArray(int) da = {0};
+    temp_data.buffer[0];
+
+context
+contex
+context
+context.alloc(2);
+2
+a
+size_of(int)
+    assert(temp_data.size == size_of(int));
+
+temp_data.size
+temp_data.size
+size_of(int)
+nt* a
+int* a
+a
+b
+a
+    assert(temp_data.size == 2*size_of(int));
+
+    assert(temp_data.size == 2*size_of(int));
+
+    assert(temp_data.size == 2*size_of(int));
+
+    cont
+
+    "path",
+
+)
+;
+        g
+
+temp_data.buffer[0]
+temp_data.size = %zu, &temp_data.buffer[0]
+        trace_info("Passed: temp_data.size = %zu, &temp_data.buffer[0] = %p",
+                   temp_data.size, &temp_data.buffer[0]);
+
+context
+contex
+&temp_data.buffer[0] = %p
+0
+&temp_data.buffer[temp_data.size]
+temp_data.size = %zu, &temp_data.buffer[0] = %p, &temp_data.buffer[temp_data.size] = %p",
+                   temp_data.size, &temp_data.buffer[0], &temp_data.buffer[temp_data.size])
+TEMP_STRING
+
+                   temp_data.size, &temp_data.buffer[0]
+_STRING
+TEMP
+TEMP_STRING
+TEMP
+trealloc(void
+temp_start_ptr
+>
+        cye_
+
+    s
+
+
+
+cye_talloc
+    
+    return ptr;
+    byte* temp_start_ptr = &cye_temp_data.buffer[0];
+
+    isz diff =  (byte*)ptr - temp_start_ptr;
+    if (diff <= 0) {
+        cye_trace_log(CYE_LOG_FATAL, "diff = %d", (i32)diff);
+    }
+
+    usz need_this_much =  size - diff;
+    assert(need_this_much > 0);
+
+    if (cye_temp_data.size + need_this_much> CYE_TEMP_CAPACITY) {
+        return NULL;
+    }
+
+    cye_temp_data.size += need_this_much;
+
+
+    return ptr;
+
+2
+    assert(temp_data.size == 3*size_of(int)); // because of fragmentation
+
+    usz checkpoint = temp_save();
+
+checkpoint
+ // because of fragmentation
+        trace_info("Passed: " TEMP);
+    } else {
+        trace_info("Failed: " TEMP);
+    }
+
+    }
+
+=
+    if (temp_data.size == 3*size_of(int)) {
+        trace_info("Passed: " TEMP);
+    } else {
+        trace_info("Failed: " TEMP);
+    }
+
+// because of fragmentation
+unused
+cye_unused
+    temp_data.buffer[0];
+
+        it 
+
+        
+
+}
+int
+        print(*
+
+da.items[idx]
+ 
+da.items[idx]
+   
+da.
+        int it = da.items[idx];
+
+d
+idx
+    DArray(int) da = {0};
+
+b
+    Type *items;         \
+    usz count;           \
+    usz capacity;        \
+
+struct {}
+         \
+           \
+        \
+    int *items;
+    usz count;
+    usz capacity;
+
+
+
+.alloc = cye_malloc
+m
+m
+    struct {
+        int* items;
+        usz count;
+        usz capacity;
+    } da = {0};
+
+    context = temp_context();
+
+
+
+bool build_and_run_test(Cmd *cmd, const char *test_name)
+
+Cmd *cmd, const char *test_name
+    usz checkpoint = temp_save();
+    DArray(int) da = {0};
+    da_append(&da, 5);
+    da_append(&da, 5);
+    da_append(&da, 5);
+    for (usz idx = 0; idx < da.count; idx += 1) {
+        trace_info("numbers %zuth is da.items[idx]=%d", da.items[idx]);
+    }
+
+     checkpoint = temp_save();
+
+    struct {
+        int* items;
+        usz count;
+        usz capacity;
+    } da = {0};
+
+    struct  da = {0};
+
+test_dynamic_array
+T
+-
+z
+[
+cye_tprintf(ZString fmt
+// TODO: Function to generate default Wanings for each compiler maybe, and output binary path?
+TString cye_tprintf(ZString fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    int n = vsnprintf(NULL, 0, fmt, args);
+    va_end(args);
+
+
+    assert(n >= 0);
+    char *result = cye_talloc(n + 1);
+
+    assert(result != NULL && "Extend the size of the temporary allocator");
+
+    // TODO: use proper arenas for the temporary allocator;
+    va_start(args, fmt);
+    vsnprintf(result, n + 1, fmt, args);
+    va_end(args);
+
+    return result;
+}
+
+cye_ds_printf
+cye_tprintf
+result
+n + 1
+void cye_ds_printf(ZString fmt, ...) {
+
+
+
+S
+chk_point
+chk_point
+void cye_ds_printf(ZString fmt, ...) {
+
+#define cye_ds_printf(ds, fmt, ...) cye_todo("cye_ds_printf")
+
+ {
+// TODO: Function to generate default Wanings for each compiler maybe, and output binary path?
+
+void cye_ds_printf(ZString fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    int n = vsnprintf(NULL, 0, fmt, args);
+    va_end(args);
+
+
+    assert(n >= 0);
+    usz chk_point = temp_save();
+    char *result = cye_talloc(n + 1);
+
+    assert(result != NULL && "Extend the size of the temporary allocator");
+
+    // TODO: use proper arenas for the temporary allocator;
+    va_start(args, fmt);
+    vsnprintf(result, n + 1, fmt, args);
+    va_end(args);
+    cye_ds_write_buf(result, n + 1);
+    temp_rewind(chk_point);
+
+    return result;
+}
+
+    // TODO: use proper arenas for the temporary allocator;
+
+
+
+
+
+    return result;
+
+
+
+ZString
+Z
+cye_ds_printf
+void cye_ds_printf(Cye_DString *ds, ZString fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    int n = vsnprintf(NULL, 0, fmt, args);
+    va_end(args);
+
+
+    assert(n >= 0);
+    usz chk_point = temp_save();
+    char *result = cye_talloc(n + 1);
+
+    assert(result != NULL && "Extend the size of the temporary allocator");
+
+    va_start(args, fmt);
+    vsnprintf(result, n + 1, fmt, args);
+    va_end(args);
+    cye_ds_write_buf(result, n + 1);
+    temp_rewind(chk_point);
+}
+
+
+void cye_ds_printf(Cye_DString *ds, ZString fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    int n = vsnprintf(NULL, 0, fmt, args);
+    va_end(args);
+
+
+    assert(n >= 0);
+    usz chk_point = temp_save();
+    char *result = cye_talloc(n + 1);
+
+    assert(result != NULL && "Extend the size of the temporary allocator");
+
+    va_start(args, fmt);
+    vsnprintf(result, n + 1, fmt, args);
+    va_end(args);
+    cye_ds_write_buf(result, n + 1);
+    temp_rewind(chk_point);
+}
+
+Dynamic
+//----------------------------------------------------------------------------------
+// Dynamic String Functions
+//----------------------------------------------------------------------------------
+
+Implementation
+Functions
+void
+void cye_ds_printf(Cye_DString *ds, ZString fmt, ...) {
+
+#define ds_write cye_ds_write
+
+ds_printf
+void cye_ds_printf(Cye_DString *ds, ZString fmt, ...) {
+
+
+#define ds_write cye_ds_write
+
+// TODO make write_zstr the default and  write -> write_char
+
+#define ds_write cye_ds_write
+
+ds_write_char
+cye_ds_write
+ds_write
+cye_ds_write_buf
+#define ds_write_zstr cye_ds_write_zstr
+
+#define ds_write      cye_ds_write
+#define ds_write_char cye_ds_write_char
+
+cye_ds_write_buf
+cye_ds_write_buf
+cye_path_create_from_array(ZString paths[], usz paths_count)
+
+
+
+ds
+ds.count > 2
+2
+,
+    cye_ds_write_zero(&ds);
+
+_zero
+    if (ds.count > 3 && 0 == strcmp(&ds.items[ds.count - 3])) {
+
+ds.count > 3 && 0 == strcmp(&ds.items[ds.count - 3]
+>
+3
+".."
+3
+-1
+3
+0
+'.' == ds.items[ds.count-1])
+1
+        || ds.count == 2 && 0 == strcmp("..", &ds.items[ds.count - 2 -1])
+
+ds.count > 2  
+>
+/
+ds.items[ds.count-1])
+1
+PATH_SEPARATOR
+1
+// Don't need to check for >= 3 and it fails in ds.count == 2
+        if (ds.count == 2 
+
+        // Don't need to check for >= 3 and it fails in ds.count == 2
+
+// Don't need to check for >= 3 and it fails in ds.count == 2
+// Don't need to check for >= 3 and it fails in ds.count == 2
+PATH_SEPARATOR_CHAR
+void cye_ds_printf(Cye_DString *ds, ZString fmt, ...) {
+
+void cye_ds_printf(ZString fmt, ...);
+
+
+ {
+u
+cye_temp_save
+temp_rewind
+        // Add more test cases as needed
+
+?
+    sb
+
+_temporary_storage
+temporary_storage
+#define TEMP "temp_data.size = %zu, &temp_data.buffer[0] = %p, &temp_data.buffer[temp_data.size] = %p", temp_data.size, &temp_data.buffer[0], &temp_data.buffer[temp_data.size]
+
+
+
+
+    context = temp_context();
+
+    int* a = context.alloc(size_of(int));
+
+    if (temp_data.size == size_of(int)) {
+        trace_info("Passed: " TEMP);
+    } else {
+        trace_info("Failed: " TEMP);
+    }
+
+    // Reloc on temp is the same as alloc so we lose the first
+    // pointer `a` and all that is expected from relloc goes for temporary
+    // realloc, can't use `a` anymore
+    int* b = context.realloc(a, 2*size_of(int));
+    if (temp_data.size == 3*size_of(int)) {
+        trace_info("Passed: " TEMP);
+    } else {
+        trace_info("Failed: " TEMP);
+    }
+
+    assert(a != b);
+
+    usz checkpoint = temp_save();
+    // DArray(int) da = {0};
+    struct {
+        int* items;
+        usz count;
+        usz capacity;
+    } da = {0};
+    da_append(&da, 5);
+    da_append(&da, 5);
+    da_append(&da, 5);
+    for (usz idx = 0; idx < da.count; idx += 1) {
+        trace_info("numbers %zuth is da.items[idx]=%d", idx,  da.items[idx]);
+    }
+
+    temp_rewind(checkpoint);
+    assert(temp_data.size == 3*size_of(int));
+
+
+chk_point
+temp_data
+3
+3
+cliteral(int[]){6,1}
+    cliteral(int[]){6,1}
+
+s
+    ds_printf(&ds, "%d workers are fighting the end of %dx%d shift", 123, 6, 1)
+
+d
+ 
+ 
+        "Years of %s yet NO REAL-WORLD USE FOUND for %s.", 123, 6, 1)
+
+    
+cye_count_non_scaped_percent
+void cye_ds_printf(Cye_DString *ds, ZString fmt, ...) {
+
+; w
+  // Iterate until the null terminator
+ w
+        "\"Yes, PLEASE %s\" - Statements dreamed up by the utterly DERANGED", 
+
+,
+s
+        "Wanted to %s ? We had a tool for that: it was called \"%s\".", 
+
+Wanted to %s ? We had a tool for that: it was called \
+        "Look at what %s have been demanding your RESPECT for all this time.", 
+
+Look at what %s have been demanding your RESPECT for all this time.
+        "Zero of something, infintesinal of that"
+
+        "go higher anyway, just for the kicks", "GUESSING"
+
+go higher anyway, just for the kicks
+, "GUESSING"
+    ds_printf(&ds,
+
+
+    ds_write_zero(&ds)L
+
+ds
+    usz chk_point = temp_save();
+
+chk_point
+temp_save();
+.size == 3*size_of(int)
+    usz chk_point = 
+
+ds.items
+TEMP
+TEMP
+ds.items
+TEMP
+ 
+test_dynamic_string
+test_temporary_storage
+    "path",
+
+    "tem",
+
+    "temporary_storage",
+
+    cye_count_non_scaped_percent
+
+
+
+
+tr
+cye_count_non_scaped_percent
+
+unused(cye_count_non_scaped_percent);
+
+, 123, 6, 1)
+    unused(cye_count_non_scaped_percent);
+
+    unused(cye_count_non_scaped_percent);
+

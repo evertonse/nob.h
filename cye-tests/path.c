@@ -14,10 +14,10 @@ void test_path_create(void) {
         {"local",         " space-around ",  "dir/",           "local/ space-around /dir/"},
         {"//etc//",       "",                "///config//",    "/etc/config/"             },
         {".dotfiles",     "",                "..//downloads/", ".dotfiles/../downloads/"  },
-        {"..",            "double-dot",      "..",             "../double-dot/../"        }, // Double doit has to end in path separator, same for one dot
+        {"..",            "double-dot",      "..",             "../double-dot/../"        }, // Double dot has to end in path separator, same for one dot
         {".",             "...",             "",               "./..."                    }, // Thress dots are not special
+        // TODO: Make this slurping /./ work
         {".///",          ".",               "/.",             "."                        }, // We should supress /./ in the middle and it sould end with /
-        // Add more test cases as needed
     };
 
     const usz num_tests = count_of(test_cases);

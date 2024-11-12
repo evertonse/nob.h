@@ -15,7 +15,6 @@ const char *test_names[] = {
 #define test_names_count ARRAY_LEN(test_names)
 
 bool test_dynamic_array(void) {
-
     struct {
         int* items;
         size_t count;

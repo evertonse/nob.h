@@ -4,11 +4,12 @@
 #include "cye_shared.h"
 
 const char *test_names[] = {
+    "current_dir",
+    "dynamic_string",
     "minimal_log_level",
     "temporary_storage",
     "path",
 //     "nob_sv_end_with",
-//     "set_get_current_dir",
 //     "cmd_redirect",
 // #ifdef _WIN32
 //     "win32_error",
@@ -21,8 +22,8 @@ bool build_and_run_test(Command *cmd, const char *test_name) {
     const char *bin_path = path_create(BUILD_FOLDER, TESTS_FOLDER, test_name);
     const char *src_path = path_create(TESTS_FOLDER, tprintf("%s.c", test_name));
 
-    trace_info("bin = %s" ,bin_path);
-    trace_info("src = %s" ,src_path);
+    trace_info("bin = %s", bin_path);
+    trace_info("src = %s", src_path);
 
     cmd_append(cmd, "cc", "-Wall", "-Wextra", "-Wno-unused-parameter", "-Wswitch-enum", "-I.", "-o", bin_path, src_path);
 

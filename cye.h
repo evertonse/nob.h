@@ -150,19 +150,24 @@
 #define I64_MAX 0x7fffffffffffffffll
 
 #if defined(__i386__) || UINTPTR_MAX == 0xffFFffFF
-#   define USZ_MIX U32_MIN
-#   define USZ_MAX U32_MAX
+#   define USIZE_MIX U32_MIN
+#   define USIZE_MAX U32_MAX
 #   define ISIZE_MIX I32_MIN
 #   define ISIZE_MAX I32_MAX
 #elif defined(__amd64__) || defined(__X86_64__) || UINTPTR_MAX == 0xffFFffFFffFFffFF
-#   define USZ_MIX U64_MIN
-#   define USZ_MAX U64_MAX
-#   define ISIZE_MIX I64_MIN
-#   define ISIZE_MAX I64_MAX
+#   define USIZE_MIN  U64_MIN
+#   define USIZE_MAX  U64_MAX
+#   define ISIZE_MIN  I64_MIN
+#   define ISIZE_MAX  I64_MAX
 #else
 #   //TODO: Portable warning is needed because of MSVC
 #   warning "You might need to check for more CPU Architectures"
 #endif
+
+#define USZ_MIN  USIZE_MIN
+#define USZ_MAX  USIZE_MAX
+#define ISZ_MIX  ISIZE_MIN
+#define ISZ_MAX  ISIZE_MAX
 
 #define ESCAPE_CODE_HEADER "\033[95m"
 #define ESCAPE_CODE_OKBLUE "\033[94m"
@@ -672,7 +677,7 @@ bool cye_zstr_ends_with(ZString src, ZString ending);
 #define cye_ds_free(ds) cye_free((ds).items)
 
 // Formated Print onto the Dynamic String
-#define cye_ds_printf(ds, fmt, ...) cye_todo("cye_ds_printf")
+void cye_ds_printf(Cye_DString *ds, ZString fmt, ...);
 
 
 //----------------------------------------------------------------------------------
@@ -1201,7 +1206,6 @@ Cye_File_Type cye_path_file_type(const char *path) {
 char* cye_path_create_from_array(ZString paths[], usz paths_count) {
     Cye_Context ctx = cye_context;
 
-
     usz total_length = 0;
     usz traling_empty_count = 0;
     for (usz i = 0; i < paths_count; i++) {
@@ -1244,6 +1248,17 @@ char* cye_path_create_from_array(ZString paths[], usz paths_count) {
     if (ds.capacity <= ds.count) {
         printf("ds = "cye_da_fmt"\n", cye_da_fmt_arg(ds));
         cye_panic();
+    }
+    // Special .. must end with trailing PATH_SEP
+    if (ds.count >= 2
+        && ('.' == ds.items[ds.count-1])
+        && ('.' == ds.items[ds.count-2])) {
+        if (ds.count == 2
+           // Don't need to check for >= 3 and it fails in ds.count == 2
+           || PATH_SEPARATOR_CHAR == ds.items[ds.count-3]
+        ) {
+            cye_ds_write(&ds, PATH_SEPARATOR);
+        }
     }
     cye_ds_write_zero(&ds);
     // cye_trace_log(CYE_LOG_FATAL,"ds.items = %s", ds.items);
@@ -1361,7 +1376,19 @@ TString cye_path_temp_cwd(void) {
 }
 
 bool cye_path_set_cwd(const char *path) {
-    cye_todo("VAI TRABALHAR VAGABUNDO");
+#ifndef _WIN32
+    if (chdir(path) < 0) {
+        cye_trace_error("could not set current directory to %s: %s", path, strerror(errno));
+        return false;
+    }
+    return true;
+#else
+    if (!SetCurrentDirectory(path)) {
+        cye_trace_error("could not set current directory to %s: %s", path, nob_win32_error_message(GetLastError()));
+        return false;
+    }
+    return true;
+#endif // _WIN32
 }
 
 
@@ -1538,6 +1565,49 @@ Cye_Path_DArray cye_path_scandir(ZString path) {
 
 // All are macros xD
 
+//----------------------------------------------------------------------------------
+// Dynamic String Implementation
+//----------------------------------------------------------------------------------
+
+// TODO: Use this to sanity check ds_printf and printlike functions
+static int cye_count_non_scaped_percent(ZString s) {
+    int count = 0;
+    int i = 0;
+
+    while (s[i] != '\0') {
+        if (s[i] == '%') {
+            // Check if the '%' is escaped
+            if (i == 0 || s[i - 1] != '\\') {
+                count++;
+            }
+        }
+        i++;
+    }
+    return count;
+
+}
+
+void cye_ds_printf(Cye_DString *ds, ZString fmt, ...) {
+    
+    unused(cye_count_non_scaped_percent);
+    va_list args;
+    va_start(args, fmt);
+    int n = vsnprintf(NULL, 0, fmt, args);
+    va_end(args);
+
+    assert(n >= 0);
+    usz chk_point = cye_temp_save();
+    char *result = cye_talloc(n + 1);
+
+    assert(result != NULL && "Extend the size of the temporary allocator");
+
+    va_start(args, fmt);
+    vsnprintf(result, n + 1, fmt, args);
+    va_end(args);
+    cye_ds_write_buf(ds, result, n + 1);
+    cye_temp_rewind(chk_point);
+}
+
 //------------------------------------------------------------------------------------
 // String Functions Implementation
 //------------------------------------------------------------------------------------
@@ -1638,6 +1708,7 @@ int cye_float_equals(f32 x, f32 y) {
 // Utils Functions Implemenetation
 //------------------------------------------------------------------------------------
 
+// TODO: Add colors from nabs.h
 void cye_trace_log(Cye_Log_Level level, const char *fmt, ...) {
     // Level below current threshold, don't log anythin
     if (level < cye_threshold_log_level) return;
@@ -1949,11 +2020,11 @@ char *nob_win32_error_message(DWORD err) {
 //----------------------------------------------------------------------------------
 // Dynamic String Functions
 //----------------------------------------------------------------------------------
-#define ds_write cye_ds_write
-
-// TODO make write_zstr the default and  write -> write_char
+#define ds_write_buf  cye_ds_write_buf
 #define ds_write_zstr cye_ds_write_zstr
 #define ds_write_zero cye_ds_write_zero
+#define ds_write      cye_ds_write
+#define ds_write_char cye_ds_write_char
 
 // Free the memory allocated by a string builder
 #define ds_free   cye_ds_free
