@@ -177,15 +177,19 @@
 #define ISZ_MIX  ISIZE_MIN
 #define ISZ_MAX  ISIZE_MAX
 
-#define ESCAPE_CODE_HEADER "\033[95m"
-#define ESCAPE_CODE_OKBLUE "\033[94m"
-#define ESCAPE_CODE_OKCYAN "\033[96m"
-#define ESCAPE_CODE_OKGREEN "\033[92m"
-#define ESCAPE_CODE_WARNING "\033[93m"
-#define ESCAPE_CODE_FAIL "\033[91m"
-#define ESCAPE_CODE_ENDC "\033[0m"
-#define ESCAPE_CODE_PRINTBOLD "\033[1m"
+#define ESCAPE_CODE_HEADER    "\033[95m"
+#define ESCAPE_CODE_OKBLUE    "\033[94m"
+#define ESCAPE_CODE_OKCYAN    "\033[96m"
+#define ESCAPE_CODE_OKGREEN   "\033[92m"
+#define ESCAPE_CODE_WARNING   "\033[93m"
+#define ESCAPE_CODE_FAIL      "\033[91m"
+#define ESCAPE_CODE_RESET     "\033[0m"
 #define ESCAPE_CODE_UNDERLINE "\033[4m"
+#define ESCAPE_CODE_LOG       "\x1b[30;1m";
+#define ESCAPE_CODE_WARN      "\x1b[1m\x1b[33m";
+#define ESCAPE_CODE_ERROR     "\x1b[1m\x1b[31m";
+#define ESCAPE_CODE_BOLD      "\x1b[37m";
+
 
 
 #define F32_MIN 1.17549435e-38f
@@ -272,8 +276,8 @@
 #   define CYE_TEMP_CAPACITY megabytes(16)
 #endif
 
-#ifndef CYE_MAX_TRACELOG_MSG_LENGTH
-#   define CYE_MAX_TRACELOG_MSG_LENGTH 256
+#ifndef CYE_MAX_TRACE_LOG_MSG_LENGTH
+#   define CYE_MAX_TRACE_LOG_MSG_LENGTH 1024
 #endif
 
 /*..................................................................................
@@ -595,11 +599,10 @@ Cye_Path_DArray cye_path_scandir(ZString path);             // Iterator of direc
 // Dynamic Array
 //------------------------------------------------------------------------------------
 
-#define cye_da_fmt "{.count=%zu, .capacity=%zu}"
-#define cye_da_fmt_arg(da) (da).count, (da).capacity
+#define cye_da_fmt         "{.count=%zu, .capacity=%zu}"
+#define cye_da_fmt_arg(da) (da).count,   (da).capacity
 
-// thread_local Cye_Context cye_context;
-// Append an item to a dynamic array
+// Append an item to a dynamic array using thread_local Cye_Context cye_context
 #define cye_da_append(da, item)                                                            \
     do {                                                                                   \
         if ((da)->count >= (da)->capacity) {                                               \
@@ -610,13 +613,13 @@ Cye_Path_DArray cye_path_scandir(ZString path);             // Iterator of direc
             (da)->items = cye_context.realloc(                                             \
                 (da)->items, (da)->capacity*sizeof(((da)->items)[0])                       \
             );                                                                             \
-            assert((da)->items != NULL && "Buy more RAM lol");                             \
+            assert((da)->items != NULL && "Dynamic Array: OOM");                           \
         }                                                                                  \
                                                                                            \
         (da)->items[(da)->count++] = (item);                                               \
     } while (0)
 
-#define cye_da_free(da) cye_free((da).items)
+#define cye_da_free(da) cye_context.free((da).items)
 
 #define cye_da_append_many(da, new_items, new_items_count)                                      \
     do {                                                                                        \
@@ -625,9 +628,9 @@ Cye_Path_DArray cye_path_scandir(ZString path);             // Iterator of direc
                 (da)->capacity = CYE_DARRAY_INIT_CAP;                                           \
             }                                                                                   \
             while ((da)->count + (new_items_count) > (da)->capacity) {                          \
-                (da)->capacity *= 2;                                                            \
+                (da)->capacity *= CYE_DARRAY_CAP_MULTIPLIER;                                    \
             }                                                                                   \
-            (da)->items = cye_realloc((da)->items, (da)->capacity*sizeof(*(da)->items));        \
+            (da)->items = cye_context.realloc((da)->items, (da)->capacity*sizeof(*(da)->items));\
             assert((da)->items != NULL && "Dynamic Array: OOM");                                \
         }                                                                                       \
         memcpy((da)->items + (da)->count, (new_items), (new_items_count)*sizeof(*(da)->items)); \
@@ -690,7 +693,7 @@ bool cye_zstr_ends_with(ZString src, ZString ending);
 #define cye_ds_write_zero(ds) cye_ds_write_char(ds, '\0')
 
 // Free the memory allocated by the Dynamic String
-#define cye_ds_free(ds) cye_free((ds).items)
+#define cye_ds_free(ds) cye_context.free((ds).items)
 
 // Formated Print onto the Dynamic String
 void cye_ds_printf(Cye_DString *ds, ZString fmt, ...);
@@ -817,10 +820,10 @@ Cye_File_Handle cye_open_for_write(ZString path) {
 #endif // _WIN32
 }
 void cye_file_close(Cye_File_Handle handle) {
-#ifdef _WIN32
-    CloseHandle(handle);
-#else
+#ifndef _WIN32
     close(handle);
+#else
+    CloseHandle(handle);
 #endif // _WIN32
 }
 
@@ -850,7 +853,7 @@ bool cye_process_wait(Cye_Process proc) {
     for (;;) {
         int wstatus = 0;
         if (waitpid(proc, &wstatus, 0) < 0) {
-            cye_trace_log(CYE_LOG_ERROR, "Could not wait on command (pid %d): %s", proc, strerror(errno));
+            cye_trace_log(CYE_LOG_ERROR, "Could not wait on command (pid %d): %s", proc, CYE_GET_ERROR_STRING);
             return false;
         }
 
@@ -940,28 +943,28 @@ Cye_Process cye_cmd_run_async_redirect(Cye_Command cmd, Cye_Command_Redirect red
 #if !defined(_WIN32) // Unix
     pid_t cpid = fork();
     if (cpid < 0) {
-        cye_trace_error("Could not fork child process: %s", strerror(errno));
+        cye_trace_error("Could not fork child process: %s", CYE_GET_ERROR_STRING);
         return CYE_INVALID_PROCESS;
     }
 
     if (cpid == 0) {
         if (redirect.in) {
             if (dup2(*redirect.in, STDIN_FILENO) < 0) {
-                cye_trace_error("Could not setup stdin for child process: %s", strerror(errno));
+                cye_trace_error("Could not setup stdin for child process: %s", CYE_GET_ERROR_STRING);
                 exit(1);
             }
         }
 
         if (redirect.out) {
             if (dup2(*redirect.out, STDOUT_FILENO) < 0) {
-                cye_trace_error("Could not setup stdout for child process: %s", strerror(errno));
+                cye_trace_error("Could not setup stdout for child process: %s", CYE_GET_ERROR_STRING);
                 exit(1);
             }
         }
 
         if (redirect.err) {
             if (dup2(*redirect.err, STDERR_FILENO) < 0) {
-                cye_trace_error("Could not setup stderr for child process: %s", strerror(errno));
+                cye_trace_error("Could not setup stderr for child process: %s", CYE_GET_ERROR_STRING);
                 exit(1);
             }
         }
@@ -973,7 +976,7 @@ Cye_Process cye_cmd_run_async_redirect(Cye_Command cmd, Cye_Command_Redirect red
         cye_cmd_append(&cmd_null, NULL);
 
         if (execvp(cmd.items[0], (char * const*) cmd_null.items) < 0) {
-            cye_trace_error("Could not exec child process: %s", strerror(errno));
+            cye_trace_error("Could not exec child process: %s", CYE_GET_ERROR_STRING);
             exit(1);
         }
         cye_unreachable("nob_cmd_run_async_redirect");
@@ -1190,7 +1193,7 @@ bool cye_mkdir_if_not_exists(const char *path) {
             cye_trace_info("directory `%s` already exists", path);
             return true;
         }
-        cye_trace_error("could not create directory `%s`: %s", path, strerror(errno));
+        cye_trace_error("could not create directory `%s`: %s", path, CYE_GET_ERROR_STRING);
         return false;
     }
 
@@ -1230,6 +1233,7 @@ char* cye_path_temp_normalize(ZString path) {
         .count = 0,
         .capacity = total_count
     };
+    cye_trace_log(CYE_LOG_INFO,"Path normalizing `%s`", path);
 
     // Removing repeated separators
     for (usz idx = 0; idx < path_count; ++idx) {
@@ -1283,11 +1287,11 @@ char* cye_path_temp_normalize(ZString path) {
 char* cye_path_create_from_array(ZString paths[], usz paths_count) {
     Cye_Context ctx = cye_context;
 
-    usz total_length = 0;
+    usz total_count = 0;
     usz traling_empty_count = 0;
     for (usz i = 0; i < paths_count; i++) {
         usz len = strlen(paths[i]);
-        total_length += len;
+        total_count += len;
         if (len == 0) {
             traling_empty_count += 1;
         } else {
@@ -1297,52 +1301,30 @@ char* cye_path_create_from_array(ZString paths[], usz paths_count) {
     }
 
     paths_count = paths_count - traling_empty_count;
-    // Allocate memory for the final path
+
+    // Allocate memory for the final path with context, so user can decide
+    // where to allocate this
     Cye_DString ds = {
-        .items = ctx.alloc(total_length + paths_count + 1),
+        .items = ctx.alloc(total_count + paths_count + 1),
         .count = 0,
-        .capacity = total_length + paths_count + 1
+        .capacity = total_count + paths_count + 1
     };
 
-    // Concatenate the paths, removing repeated separators
+    // Concatenate the paths
     for (usz i = 0; i < paths_count; i++) {
-        for (usz j = 0; paths[i][j] != '\0'; ++j) {
-            bool is_curr_sep = paths[i][j] == PATH_SEPARATOR_CHAR;
-            bool is_prev_sep = ds.count > 0 && (ds.items[ds.count-1] == PATH_SEPARATOR_CHAR);
-            // int rev_dot_count = 0;
-            bool should_write = !(is_curr_sep && is_prev_sep);
-            if (should_write) {
-                cye_ds_write_char(&ds, paths[i][j]);
-            }
-        }
-
+        cye_ds_write(&ds, paths[i]);
         if (i < (paths_count-1) && ds.count > 0 && (ds.items[ds.count-1] != PATH_SEPARATOR_CHAR)) {
             cye_ds_write(&ds, PATH_SEPARATOR);
         }
     }
-
-    // Should have been an upperbound on allocated stuff
-    if (ds.capacity <= ds.count) {
-        cye_trace_error(
-            "Allocating memory for the dynamic string is an error ds = "cye_da_fmt".\n"
-            "All memory should have been talloc",
-            cye_da_fmt_arg(ds)
-        );
-        cye_panic();
-    }
-    // Special .. must end with trailing PATH_SEP
-    if (ds.count >= 2
-        && ('.' == ds.items[ds.count-1])
-        && ('.' == ds.items[ds.count-2])) {
-        if (ds.count == 2
-           // Don't need to check for >= 3 and it fails in ds.count == 2
-           || PATH_SEPARATOR_CHAR == ds.items[ds.count-3]
-        ) {
-            cye_ds_write(&ds, PATH_SEPARATOR);
-        }
-    }
     cye_ds_write_zero(&ds);
-    // cye_trace_log(CYE_LOG_FATAL,"ds.items = %s", ds.items);
+
+    {
+        usz chk_point = cye_temp_save();
+        TString tpath = cye_path_temp_normalize(ds.items);
+        ds.items = strncpy(ds.items, tpath, total_count);
+        cye_temp_rewind(chk_point);
+    }
 
     return ds.items;
 }
@@ -1370,7 +1352,7 @@ int cye_needs_rebuild(const char *output_path, const char **input_paths, usz inp
     if (stat(output_path, &statbuf) < 0) {
         // NOTE: if output does not exist it 100% must be rebuilt
         if (errno == ENOENT) return 1;
-        cye_trace_log(CYE_LOG_ERROR, "could not stat %s: %s", output_path, strerror(errno));
+        cye_trace_log(CYE_LOG_ERROR, "could not stat %s: %s", output_path, CYE_GET_ERROR_STRING);
         return -1;
     }
     int output_path_time = statbuf.st_mtime;
@@ -1379,7 +1361,7 @@ int cye_needs_rebuild(const char *output_path, const char **input_paths, usz inp
         const char *input_path = input_paths[i];
         if (stat(input_path, &statbuf) < 0) {
             // NOTE: non-existing input is an error cause it is needed for building in the first place
-            cye_trace_log(CYE_LOG_ERROR, "could not stat %s: %s", input_path, strerror(errno));
+            cye_trace_log(CYE_LOG_ERROR, "could not stat %s: %s", input_path, CYE_GET_ERROR_STRING);
             return -1;
         }
         int input_path_time = statbuf.st_mtime;
@@ -1435,7 +1417,7 @@ TString cye_path_temp_cwd(void) {
 #ifndef _WIN32
     char *buffer = (char*) cye_talloc(PATH_MAX);
     if (getcwd(buffer, PATH_MAX) == NULL) {
-        cye_trace_error("could not get current directory: %s", strerror(errno));
+        cye_trace_error("could not get current directory: %s", CYE_GET_ERROR_STRING);
         return NULL;
     }
     return buffer;
@@ -1459,7 +1441,7 @@ TString cye_path_temp_cwd(void) {
 bool cye_path_set_cwd(const char *path) {
 #ifndef _WIN32
     if (chdir(path) < 0) {
-        cye_trace_error("could not set current directory to %s: %s", path, strerror(errno));
+        cye_trace_error("could not set current directory to %s: %s", path, CYE_GET_ERROR_STRING);
         return false;
     }
     return true;
@@ -1620,7 +1602,7 @@ bool cye_mkdir_include_parents_from_tstr(TString path) {
 
     cye_threshold_log_level = CYE_LOG_INFO;
     if (!created) {
-        cye_trace_error("could not create directories recursively `%s`: %s", path, strerror(errno));
+        cye_trace_error("could not create directories recursively `%s`: %s", path, CYE_GET_ERROR_STRING);
     } else {
         cye_trace_info("created all directories `%s`", path);
     }
@@ -1664,7 +1646,7 @@ bool cye_path_move(ZString src, ZString dst) {
 #ifndef _WIN32 // Unix
     // On Unix-like systems, rename() can move files across directories
     if (rename(src, dst) < 0) {
-        cye_trace_error("Could not move %s to %s: %s", src, dst, strerror(errno));
+        cye_trace_error("Could not move %s to %s: %s", src, dst, CYE_GET_ERROR_STRING);
         return false;
     }
 #else
@@ -1709,7 +1691,9 @@ Cye_Path_DArray cye_path_scandir(ZString path) {
 // Dynamic String Implementation
 //----------------------------------------------------------------------------------
 
-// TODO: Use this to sanity check ds_printf and printlike functions
+
+// NOTE: Don't use this yet
+// TODO: Improve and use this to sanity check ds_printf and printlike functions
 static int cye_count_non_scaped_percent(ZString s) {
     int count = 0;
     int i = 0;
@@ -1717,6 +1701,10 @@ static int cye_count_non_scaped_percent(ZString s) {
     while (s[i] != '\0') {
         if (s[i] == '%') {
             // Check if the '%' is escaped
+            // WARN: This only check one level of escaped
+            // actual it fails with "\\%s" for examples it'l think its
+            // escaped when it's not. This function is to be taken not as exact
+            // but a lower bound of %'s but still need to check, basically don't use this yet
             if (i == 0 || s[i - 1] != '\\') {
                 count++;
             }
@@ -1855,29 +1843,57 @@ void cye_trace_log(Cye_Log_Level level, const char *fmt, ...) {
 
     va_list args;
     va_start(args, fmt);
-    char buffer[CYE_MAX_TRACELOG_MSG_LENGTH] = { 0 };
+    char buffer[CYE_MAX_TRACE_LOG_MSG_LENGTH] = { 0 };
+
+    const char *color = "";
+    const char *reset = "";
+    const char *bold = "";
+
 
     switch (level) {
-        case CYE_LOG_TRACE:   strcpy(buffer, "TRACE: "  ); break;
-        case CYE_LOG_DEBUG:   strcpy(buffer, "DEBUG: "  ); break;
-        case CYE_LOG_INFO:    strcpy(buffer, "INFO: "   ); break;
-        case CYE_LOG_WARNING: strcpy(buffer, "WARNING: "); break;
-        case CYE_LOG_ERROR:   strcpy(buffer, "ERROR: "  ); break;
-        case CYE_LOG_FATAL:   strcpy(buffer, "FATAL: "  ); break;
-        case CYE_LOG_ALL:     strcpy(buffer, "ALL: "    ); break;
+        case CYE_LOG_TRACE:   break;
+        case CYE_LOG_DEBUG:   color = ESCAPE_CODE_OKCYAN;  reset = ESCAPE_CODE_RESET; break;
+        case CYE_LOG_INFO:    color = ESCAPE_CODE_LOG;     reset = ESCAPE_CODE_RESET; break;
+        case CYE_LOG_WARNING: color = ESCAPE_CODE_WARNING; reset = ESCAPE_CODE_RESET; break;
+        case CYE_LOG_ERROR:   color = ESCAPE_CODE_ERROR;   reset = ESCAPE_CODE_RESET; break;
+        case CYE_LOG_FATAL:   color = ESCAPE_CODE_ERROR;   reset = ESCAPE_CODE_RESET; bold = ESCAPE_CODE_BOLD; break;
+        case CYE_LOG_ALL:     break;
+        case CYE_LOG_NONE:    break;
+        default: cye_unreachable("cye_trace_log"); break;
+    }
+
+#if !defined(_WIN32)
+    if (!isatty(level > 0 ? STDERR_FILENO : STDOUT_FILENO)) {
+        color = ""; reset = ""; bold = "";
+    }
+#else
+    if (GetFileType( GetStdHandle(level > 0 ? STD_ERROR_HANDLE : STD_OUTPUT_HANDLE)) != FILE_TYPE_CHAR) {
+        color = ""; reset = ""; bold = "";
+    }
+#endif
+
+    const usz max_len = CYE_MAX_TRACE_LOG_MSG_LENGTH;
+    usz written = 0 ;
+    switch (level) {
+        case CYE_LOG_TRACE:   written = snprintf(buffer, max_len, "%sTRACE%s%s: ", color, bold, reset); break;
+        case CYE_LOG_DEBUG:   written = snprintf(buffer, max_len, "%sDEBUG%s%s: ", color, bold, reset); break;
+        case CYE_LOG_INFO:    written = snprintf(buffer, max_len, "%sINFO%s%s:  ", color, bold, reset); break;
+        case CYE_LOG_WARNING: written = snprintf(buffer, max_len, "%sWARN%s%s:  ", color, bold, reset); break;
+        case CYE_LOG_ERROR:   written = snprintf(buffer, max_len, "%sERROR%s%s: ", color, bold, reset); break;
+        case CYE_LOG_FATAL:   written = snprintf(buffer, max_len, "%sFATAL%s%s: ", color, bold, reset); break;
+        case CYE_LOG_ALL:     written = snprintf(buffer, max_len, "%sALL%s%s:   ", color, bold, reset); break;
         case CYE_LOG_NONE:    return;
         default: cye_unreachable("cye_trace_log");         break;
     }
 
     //TODO: Better name
-    const usz XXnumXX = 12;
     usz fmt_size = (usz)strlen(fmt);
     memcpy(
         buffer + strlen(buffer),
         fmt,
-        (fmt_size < (CYE_MAX_TRACELOG_MSG_LENGTH - XXnumXX))
+        (fmt_size < (max_len - written))
           ? fmt_size
-          : (CYE_MAX_TRACELOG_MSG_LENGTH - XXnumXX)
+          : (max_len - written)
     );
 
     strcat(buffer, "\n");

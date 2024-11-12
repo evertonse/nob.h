@@ -75,6 +75,7 @@ void test_normalized(void) {
         {"/.",                    "/" },
         {"/./",                   "/" },
         {".///note.txt",         "./note.txt" },
+        {"passwords.txt",         "passwords.txt" },
     };
 
     
