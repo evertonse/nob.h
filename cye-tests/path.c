@@ -59,12 +59,74 @@ void test_path_create(void) {
 
     // Optional: make the test suite fail if not all tests passed
     if (tests_passed != num_tests) {
-        trace_log(LOG_ERROR, "Some path creation tests failed!");
+        trace_log(LOG_ERROR, "Some `%s` tests failed!", __PRETTY_FUNCTION__);
+        exit(1);
+    }
+}
+
+void test_normalized(void) {
+    const char *test_cases[][2] = {
+        // Each row contains: {path1, expected_result}
+        {"//bin////lol/dsadas/", "/bin/lol/dsadas/" },
+        {"..",                   "../" },
+        {"./././.gitignore",                   "./.gitignore" },
+        {"./",                   "./" },
+        {".",                    "./" },
+        {"/.",                    "/" },
+        {"/./",                   "/" },
+        {".///note.txt",         "./note.txt" },
+    };
+
+    
+    assert(strlen("")  == 0);
+    assert(""[0] == '\0');
+    assert(strlen("1") == 1);
+    assert("1"[1] == '\0');
+
+    const usz num_tests = count_of(test_cases);
+    assert( num_tests == (sizeof(test_cases) / sizeof(test_cases[0])) && "We Should be balling but we're not");
+    usz tests_passed = 0;
+
+    {
+        context         = temp_context();
+        usz checkpoint  = temp_save();
+
+        for (usz i = 0; i < num_tests; i++) {
+            ZString path1 = test_cases[i][0];
+            ZString expected = test_cases[i][1];
+
+            char *result = path_temp_normalize(path1);
+            
+            if (result == NULL) {
+                trace_log(LOG_ERROR, "Test %zu failed, path_create returned NULL for input `%s`", i, path1);
+                continue;
+            }
+
+            if (0 == strcmp(result, expected)) {
+                trace_log(LOG_INFO, "Test %zu passed, '%s' -> '%s'", i, path1, result);
+                tests_passed++;
+            } else {
+                trace_log(LOG_ERROR, "Test %zu failed, expected '%s' but got '%s' for input `%s`", i, expected, result, path1);
+            }
+
+        }
+
+        context = default_context();
+        temp_rewind(checkpoint);
+    }
+
+    trace_log(LOG_INFO, "Path creation tests complete: %zu/%zu passed",
+            tests_passed, num_tests);
+
+    // Optional: make the test suite fail if not all tests passed
+    if (tests_passed != num_tests) {
+        trace_log(LOG_ERROR, "Some `%s` tests failed!", __PRETTY_FUNCTION__);
         exit(1);
     }
 }
 
 int main(void) {
+    test_normalized();
     test_path_create();
     return 0;
 }

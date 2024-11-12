@@ -4,11 +4,12 @@
 #include "cye_shared.h"
 
 const char *test_names[] = {
+    "path",
+    "making_dirs",
     "current_dir",
     "dynamic_string",
     "minimal_log_level",
     "temporary_storage",
-    "path",
 //     "nob_sv_end_with",
 //     "cmd_redirect",
 // #ifdef _WIN32

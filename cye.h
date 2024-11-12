@@ -1,13 +1,21 @@
 #ifndef _CYE_H_
 #define _CYE_H_
 
+
+// Ideias
+//
+// - Errors:
+//      Must be gracefully handled, the default is if things already exist, it's ok.
+//      If some action is not permitted, trace log an error and let the user handdle (don't crash).
+//
+//
+
 /*..................................................................................
  .                                                                                 .
  .                                BASIC                                            .
  .                                                                                 .
  ...................................................................................
 */
-
 //----------------------------------------------------------------------------------
 // Basic Includes
 //----------------------------------------------------------------------------------
@@ -313,13 +321,12 @@ typedef int8_t      i8;
 typedef size_t      usz;
 typedef ptrdiff_t   isz;
 
-//
 typedef size_t      usize;
 typedef ptrdiff_t   isize;
 
-// Zero Terminated String
-typedef const char* ZString; // Zero Terminated String
-typedef char* TString; // Temporary String
+typedef const char* ZString; // Static Zero Terminated String
+typedef       char* TString; // Temporary String
+typedef       char* MutString; // Mutable String, might be temporary or not
 
 //----------------------------------------------------------------------------------
 // Structures Definition with Prefix
@@ -517,6 +524,7 @@ bool cye_read_entire_dir(const char *parent, Cye_Path_DArray *children);
 bool cye_write_entire_file(const char *path, const void *data, usz size);
 Cye_File_Type cye_path_file_type(const char *path);
 
+char* cye_path_temp_normalize(ZString path);
 char* cye_path_create_from_array(ZString paths[], usz paths_count);
 
 #define cye_path_create(...)                                            \
@@ -551,22 +559,25 @@ bool cye_is_mount(ZString path);                              // Check if path  
 bool cye_is_same_path(ZString path1, ZString path2);          // Check if paths reference same file (one can be absolute and another relative or on be a hard link)
 
 Cye_DString cye_path_join(ZString path, ZString* paths);             // Join paths intelligently
-usz       cye_path_size(ZString path);                             // Size  in bytes
+usz         cye_path_size(ZString path);                             // Size  in bytes
 ZString     cye_path_real(ZString path);                             // Returns real path (resolve symlinks)
 ZString     cye_path_absolute(ZString path);                         // Returns absolute path
 ZString     cye_path_relative(ZString from, ZString target);         // Returns relative path
 
 ZString cye_path_home(void);           //  Return home
 ZString cye_path_cwd(void);            //  Return current directory
-ZString cye_path_parent(ZString path);
-ZString cye_path_owner(ZString path);
-ZString cye_path_stem(ZString path);   // without extension
-ZString cye_path_ext(ZString path);    // extension
-ZString cye_path_touch(ZString path);  // extension
+ZString cye_path_parent(ZString path); //  Returns parent directory
+ZString cye_path_owner(ZString path);  //  Returns parent directory
+ZString cye_path_stem(ZString path);   //  Return path without extension
+ZString cye_path_ext(ZString path);    //  Returns only the extension
+ZString cye_path_touch(ZString path);  //  Creates an empty file if not already exists
 
 bool cye_dir_change(ZString path);                          // Change current working directory
-bool cye_mkdir(ZString path);                               // Create directory
-bool cye_mkdirs(ZString path);                              // Create directories recursively
+#define cye_mkdir cye_mkdir_if_not_exists                   // Create directory
+bool cye_mkdir_include_parents(ZString path);               // Create directories including parents as needed
+bool cye_mkdir_include_parents_from_tstr(TString path);     // Create directories recursively
+#define cye_mkdirs cye_mkdir_include_parents
+
 bool cye_remove_file(ZString path);                         // Remove file
 bool cye_remove_dir(ZString path);                          // Remove directory
 bool cye_remove_dirs(ZString path);                         // Remove directories recursively
@@ -586,6 +597,7 @@ Cye_Path_DArray cye_path_scandir(ZString path);             // Iterator of direc
 
 #define cye_da_fmt "{.count=%zu, .capacity=%zu}"
 #define cye_da_fmt_arg(da) (da).count, (da).capacity
+
 // thread_local Cye_Context cye_context;
 // Append an item to a dynamic array
 #define cye_da_append(da, item)                                                            \
@@ -645,6 +657,10 @@ bool cye_zstr_ends_with(ZString src, ZString ending);
 //----------------------------------------------------------------------------------
 // Dynamic String Functions
 //----------------------------------------------------------------------------------
+
+#define cye_ds_fmt "{.items=%s, .count=%zu, .capacity=%zu}"
+#define cye_ds_fmt_arg(ds) (ds).items, (ds).count, (ds).capacity
+
 #define cye_ds_write_buf(ds, buf, size) cye_da_append_many(ds, buf, size)
 
 #define cye_ds_write_zstr(ds, zstr)   \
@@ -1203,6 +1219,67 @@ Cye_File_Type cye_path_file_type(const char *path) {
     cye_todo("VAI TRABALHAR VAGABUNDO");
 }
 
+char* cye_path_temp_normalize(ZString path) {
+    // 1 extra for the path separator in the end and another 1 byte for null terminator
+    usz path_count  = strlen(path);
+    usz total_count = path_count + 1 + 1;
+
+    // Allocate memory for the final path
+    Cye_DString ds = {
+        .items = cye_talloc(total_count),
+        .count = 0,
+        .capacity = total_count
+    };
+
+    // Removing repeated separators
+    for (usz idx = 0; idx < path_count; ++idx) {
+
+        bool is_next_end = (idx + 1) == (path_count);
+        bool is_prev_sep = ds.count > 0 && (ds.items[ds.count-1] == PATH_SEPARATOR_CHAR);
+        bool is_next_sep = ((idx + 1) < path_count) && (path[idx + 1] == PATH_SEPARATOR_CHAR);
+        bool is_curr_dot = path[idx] ==  '.';
+
+        if (is_prev_sep && (is_next_end || is_next_sep) && is_curr_dot) {
+            idx += 1;
+            continue;
+        }
+
+        bool is_curr_sep = path[idx] == PATH_SEPARATOR_CHAR;
+        if (!(is_curr_sep && is_prev_sep)) {
+            cye_ds_write_char(&ds, path[idx]);
+        }
+    }
+
+    // Special .. must end with trailing PATH_SEP, we must have
+    if (ds.count >= 2
+        && ('.' == ds.items[ds.count-1])
+        && ('.' == ds.items[ds.count-2]))
+    {
+        // 2th case: Don't need to check for >= 3 and it fails in ds.count == 2
+        if (ds.count == 2 || PATH_SEPARATOR_CHAR == ds.items[ds.count-3]) {
+            cye_ds_write(&ds, PATH_SEPARATOR);
+        }
+    } else if (ds.count == 1 && '.' == ds.items[ds.count-1]) {
+        cye_ds_write(&ds, PATH_SEPARATOR);
+    }
+
+    cye_ds_write_zero(&ds);
+
+    // Should have been an upperbound on allocated memory, it should never have grown
+    if (ds.capacity > total_count) {
+        cye_trace_error(
+            "Allocating memory for the dynamic string is an error path=%s total_count=%zu ds="cye_ds_fmt".\n"
+            "All memory should have been talloc",
+            path,
+            total_count,
+            cye_ds_fmt_arg(ds)
+        );
+        cye_panic();
+    }
+
+    return ds.items;
+}
+
 char* cye_path_create_from_array(ZString paths[], usz paths_count) {
     Cye_Context ctx = cye_context;
 
@@ -1230,10 +1307,10 @@ char* cye_path_create_from_array(ZString paths[], usz paths_count) {
     // Concatenate the paths, removing repeated separators
     for (usz i = 0; i < paths_count; i++) {
         for (usz j = 0; paths[i][j] != '\0'; ++j) {
-            bool curr_is_sep = paths[i][j] == PATH_SEPARATOR_CHAR;
-            bool prev_is_sep = ds.count > 0 && (ds.items[ds.count-1] == PATH_SEPARATOR_CHAR);
+            bool is_curr_sep = paths[i][j] == PATH_SEPARATOR_CHAR;
+            bool is_prev_sep = ds.count > 0 && (ds.items[ds.count-1] == PATH_SEPARATOR_CHAR);
             // int rev_dot_count = 0;
-            bool should_write = !(curr_is_sep && prev_is_sep);
+            bool should_write = !(is_curr_sep && is_prev_sep);
             if (should_write) {
                 cye_ds_write_char(&ds, paths[i][j]);
             }
@@ -1246,7 +1323,11 @@ char* cye_path_create_from_array(ZString paths[], usz paths_count) {
 
     // Should have been an upperbound on allocated stuff
     if (ds.capacity <= ds.count) {
-        printf("ds = "cye_da_fmt"\n", cye_da_fmt_arg(ds));
+        cye_trace_error(
+            "Allocating memory for the dynamic string is an error ds = "cye_da_fmt".\n"
+            "All memory should have been talloc",
+            cye_da_fmt_arg(ds)
+        );
         cye_panic();
     }
     // Special .. must end with trailing PATH_SEP
@@ -1492,14 +1573,73 @@ bool cye_dir_change(ZString path) {
     cye_todo("New Functions to Work on");
 }
 
-// Create directory
-bool cye_mkdir(ZString path) {
-    cye_todo("New Functions to Work on");
+bool cye_mkdir_include_parents_from_tstr(TString path) {
+    if (path == NULL || *path == '\0') {
+        return false;
+    }
+
+    cye_threshold_log_level = CYE_LOG_NONE;
+    bool created = false;
+
+    // Remove trailing slashes
+    usz len = strlen(path);
+    while (len > 0 && (path[len - 1] == '/' || path[len - 1] == '\\')) {
+        path[--len] = '\0';
+    }
+
+    // Handle absolute paths on Windows (e.g., "C:\foo")
+#ifdef _WIN32
+    if (len >= 2 && path[1] == ':') {
+        if (len == 2) {  // Just a drive letter
+            cye_threshold_log_level = CYE_LOG_INFO;
+            return true;
+        }
+        // Skip drive letter and first slash if present
+        char *p = path + 3;
+        if (*p == '/' || *p == '\\') p++;
+        for (; *p; p++) {
+            if (*p == '/' || *p == '\\') {
+                *p = '\0';
+                created |= cye_mkdir(path);
+                *p = '\\';
+            }
+        }
+        created |= cye_mkdir(path);
+    }
+#endif
+
+    // Handle absolute paths on Unix and relative paths on both systems
+    for (char *p = path + 1; *p; p++) {
+        if (*p == '/' || *p == '\\') {
+            *p = '\0';
+            created |= cye_mkdir(path);
+            *p = '/';
+        }
+    }
+    created |= cye_mkdir(path);
+
+    cye_threshold_log_level = CYE_LOG_INFO;
+    if (!created) {
+        cye_trace_error("could not create directories recursively `%s`: %s", path, strerror(errno));
+    } else {
+        cye_trace_info("created all directories `%s`", path);
+    }
+
+    return created;
 }
 
 // Create directories recursively
-bool cye_mkdirs(ZString path) {
-    cye_todo("New Functions to Work on");
+bool cye_mkdir_include_parents(ZString path) {
+    bool created  = false;
+    usz chk_point = cye_temp_save();
+    cye_context   = cye_temp_context();
+
+    TString tpath = cye_path_create(path);
+    created = cye_mkdir_include_parents_from_tstr(tpath);
+
+    cye_context  = cye_default_context();
+    cye_temp_rewind(chk_point);
+    return created;
 }
 
 //  Remove file
@@ -1588,7 +1728,7 @@ static int cye_count_non_scaped_percent(ZString s) {
 }
 
 void cye_ds_printf(Cye_DString *ds, ZString fmt, ...) {
-    
+
     unused(cye_count_non_scaped_percent);
     va_list args;
     va_start(args, fmt);
@@ -1846,7 +1986,7 @@ char *nob_win32_error_message(DWORD err) {
  .                                                                                 .
  ...................................................................................
 */
-#ifndef _CYE_NO_SHORT_NAMES_
+#ifndef _CYE_NO_SHORT_NAMES_GUARD_
 #define _CYE_NO_SHORT_NAMES_
 #if !defined(CYE_NO_SHORT_NAMES)
 
@@ -1945,62 +2085,66 @@ char *nob_win32_error_message(DWORD err) {
 // Path Functions
 //------------------------------------------------------------------------------------
 
-#define mkdir_if_not_exists        cye_mkdir_if_not_exists
-#define copy_file                  cye_copy_file
-#define copy_dir_recursively       cye_copy_dir_recursively
-#define read_entire_dir            cye_read_entire_dir
-#define write_entire_file          cye_write_entire_file
-#define path_file_type             cye_path_file_type
-#define path_create_from_array     cye_path_create_from_array
-#define path_create                cye_path_create
+#define mkdir_if_not_exists             cye_mkdir_if_not_exists
+#define copy_file                       cye_copy_file
+#define copy_dir_recursively            cye_copy_dir_recursively
+#define read_entire_dir                 cye_read_entire_dir
+#define write_entire_file               cye_write_entire_file
+#define path_file_type                  cye_path_file_type
+#define path_temp_normalize             cye_path_temp_normalize
+#define path_create_from_array          cye_path_create_from_array
+
+#define path_create                     cye_path_create
 
 
-#define base_name                  cye_base_name
-#define exists                     cye_exists
-#define expand_user                cye_expand_user
-#define expand_vars                cye_expand_vars
+#define base_name                       cye_base_name
+#define exists                          cye_exists
+#define expand_user                     cye_expand_user
+#define expand_vars                     cye_expand_vars
 
-#define needs_rebuild              cye_needs_rebuild
-#define needs_rebuild_spread       cye_needs_rebuild_spread
-#define needs_rebuild1             cye_needs_rebuild1
+#define needs_rebuild                   cye_needs_rebuild
+#define needs_rebuild_spread            cye_needs_rebuild_spread
+#define needs_rebuild1                  cye_needs_rebuild1
 
-#define path_temp_cwd              cye_path_temp_cwd
-#define path_set_cwd               cye_path_set_cwd
+#define path_temp_cwd                   cye_path_temp_cwd
+#define path_set_cwd                    cye_path_set_cwd
 
-#define file_exists                cye_file_exists
-#define is_absolute                cye_is_absolute
-#define is_relative                cye_is_relative
-#define is_file                    cye_is_file
-#define is_dir                     cye_is_dir
-#define is_link                    cye_is_link
-#define is_mount                   cye_is_mount
-#define is_same_path               cye_is_same_path
+#define file_exists                     cye_file_exists
+#define is_absolute                     cye_is_absolute
+#define is_relative                     cye_is_relative
+#define is_file                         cye_is_file
+#define is_dir                          cye_is_dir
+#define is_link                         cye_is_link
+#define is_mount                        cye_is_mount
+#define is_same_path                    cye_is_same_path
 
-#define path_join                  cye_path_join
-#define path_size                  cye_path_size
-#define path_real                  cye_path_real
-#define path_absolute              cye_path_absolute
-#define path_relative              cye_path_relative
+#define path_join                       cye_path_join
+#define path_size                       cye_path_size
+#define path_real                       cye_path_real
+#define path_absolute                   cye_path_absolute
+#define path_relative                   cye_path_relative
 
-#define path_home                  cye_path_home
-#define path_cwd                   cye_path_cwd
-#define path_parent                cye_path_parent
-#define path_owner                 cye_path_owner
-#define path_stem                  cye_path_stem
-#define path_ext                   cye_path_ext
-#define path_touch                 cye_path_touch
+#define path_home                       cye_path_home
+#define path_cwd                        cye_path_cwd
+#define path_parent                     cye_path_parent
+#define path_owner                      cye_path_owner
+#define path_stem                       cye_path_stem
+#define path_ext                        cye_path_ext
+#define path_touch                      cye_path_touch
 
-#define dir_change                 cye_dir_change
-#define mkdir                      cye_mkdir
-#define mkdirs                     cye_mkdirs
-#define remove_file                cye_remove_file
-#define remove_dir                 cye_remove_dir
-#define remove_dirs                cye_remove_dirs
-#define path_move                  cye_path_move
-#define path_rename                cye_path_rename
-#define path_renames               cye_path_renames
-#define path_replace               cye_path_replace
-#define path_scandir               cye_path_scandir
+#define dir_change                      cye_dir_change
+#define mkdir                           cye_mkdir
+#define mkdirs                          cye_mkdirs
+#define mkdir_include_parents           cye_mkdir_include_parents
+#define mkdir_include_parents_from_tstr cye_mkdir_include_parents_from_tstr
+#define remove_file                     cye_remove_file
+#define remove_dir                      cye_remove_dir
+#define remove_dirs                     cye_remove_dirs
+#define path_move                       cye_path_move
+#define path_rename                     cye_path_rename
+#define path_renames                    cye_path_renames
+#define path_replace                    cye_path_replace
+#define path_scandir                    cye_path_scandir
 
 //------------------------------------------------------------------------------------
 // Dynamic Array
@@ -2020,6 +2164,10 @@ char *nob_win32_error_message(DWORD err) {
 //----------------------------------------------------------------------------------
 // Dynamic String Functions
 //----------------------------------------------------------------------------------
+
+#define ds_fmt     cye_ds_fmt
+#define ds_fmt_arg cye_ds_fmt_arg
+
 #define ds_write_buf  cye_ds_write_buf
 #define ds_write_zstr cye_ds_write_zstr
 #define ds_write_zero cye_ds_write_zero
@@ -2062,6 +2210,9 @@ char *nob_win32_error_message(DWORD err) {
 
 #endif // CYE_NO_SHORT_NAMES
 
-#endif // _CYE_NO_SHORT_NAMES_
+#endif // _CYE_NO_SHORT_NAMES_GUARD_
+
+//TODO: Make a localized space for common undef to helpout when undefs are needed
+// make in a way that it doesnt trigger any warning from the compiler ok?
 
 // EOF
