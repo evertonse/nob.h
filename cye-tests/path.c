@@ -59,23 +59,26 @@ void test_path_create(void) {
 
     // Optional: make the test suite fail if not all tests passed
     if (tests_passed != num_tests) {
-        trace_log(LOG_ERROR, "Some `%s` tests failed!", __PRETTY_FUNCTION__);
+        trace_log(LOG_FATAL, "Some `%s` tests failed!", __PRETTY_FUNCTION__);
         exit(1);
+    } else {
+        trace_log(LOG_INFO, "All `%s` tests succeeded!", __PRETTY_FUNCTION__);
     }
 }
 
 void test_normalized(void) {
     const char *test_cases[][2] = {
         // Each row contains: {path1, expected_result}
-        {"//bin////lol/dsadas/", "/bin/lol/dsadas/" },
-        {"..",                   "../" },
-        {"./././.gitignore",                   "./.gitignore" },
-        {"./",                   "./" },
-        {".",                    "./" },
-        {"/.",                    "/" },
-        {"/./",                   "/" },
-        {".///note.txt",         "./note.txt" },
-        {"passwords.txt",         "passwords.txt" },
+        {"//bin////lol/dsadas/",     "/bin/lol/dsadas/"        },
+        {"..",                       "../"                     },
+        {"./././.gitignore",         "./.gitignore"            },
+        {"./",                       "./"                      },
+        {".",                        "./"                      },
+        {"/.",                       "/"                       },
+        {"/./",                      "/"                       },
+        {".///note.txt",             "./note.txt"              },
+        {".dotfiles/..//downloads/", ".dotfiles/../downloads/" },
+        {"passwords.txt",            "passwords.txt"           },
     };
 
     
@@ -121,8 +124,9 @@ void test_normalized(void) {
 
     // Optional: make the test suite fail if not all tests passed
     if (tests_passed != num_tests) {
-        trace_log(LOG_ERROR, "Some `%s` tests failed!", __PRETTY_FUNCTION__);
-        exit(1);
+        trace_log(LOG_FATAL, "Some `%s` tests failed!", __PRETTY_FUNCTION__);
+    } else {
+        trace_log(LOG_INFO, "All `%s` tests succeeded!", __PRETTY_FUNCTION__);
     }
 }
 

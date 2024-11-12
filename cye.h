@@ -1302,8 +1302,7 @@ char* cye_path_create_from_array(ZString paths[], usz paths_count) {
 
     paths_count = paths_count - traling_empty_count;
 
-    // Allocate memory for the final path with context, so user can decide
-    // where to allocate this
+    // Allocate memory for the final path with context, so user can decide where to allocate this
     Cye_DString ds = {
         .items = ctx.alloc(total_count + paths_count + 1),
         .count = 0,
@@ -1875,17 +1874,18 @@ void cye_trace_log(Cye_Log_Level level, const char *fmt, ...) {
     const usz max_len = CYE_MAX_TRACE_LOG_MSG_LENGTH;
     usz written = 0 ;
     switch (level) {
-        case CYE_LOG_TRACE:   written = snprintf(buffer, max_len, "%sTRACE%s%s: ", color, bold, reset); break;
-        case CYE_LOG_DEBUG:   written = snprintf(buffer, max_len, "%sDEBUG%s%s: ", color, bold, reset); break;
-        case CYE_LOG_INFO:    written = snprintf(buffer, max_len, "%sINFO%s%s:  ", color, bold, reset); break;
-        case CYE_LOG_WARNING: written = snprintf(buffer, max_len, "%sWARN%s%s:  ", color, bold, reset); break;
-        case CYE_LOG_ERROR:   written = snprintf(buffer, max_len, "%sERROR%s%s: ", color, bold, reset); break;
-        case CYE_LOG_FATAL:   written = snprintf(buffer, max_len, "%sFATAL%s%s: ", color, bold, reset); break;
-        case CYE_LOG_ALL:     written = snprintf(buffer, max_len, "%sALL%s%s:   ", color, bold, reset); break;
+        case CYE_LOG_TRACE:   written = snprintf(buffer, max_len, "%sTRACE%s%s: ", color, reset, bold); break;
+        case CYE_LOG_DEBUG:   written = snprintf(buffer, max_len, "%sDEBUG%s%s: ", color, reset, bold); break;
+        case CYE_LOG_INFO:    written = snprintf(buffer, max_len, "%sINFO%s%s:  ", color, reset, bold); break;
+        case CYE_LOG_WARNING: written = snprintf(buffer, max_len, "%sWARN%s%s:  ", color, reset, bold); break;
+        case CYE_LOG_ERROR:   written = snprintf(buffer, max_len, "%sERROR%s%s: ", color, reset, bold); break;
+        case CYE_LOG_FATAL:   written = snprintf(buffer, max_len, "%sFATAL%s%s: ", color, reset, bold); break;
+        case CYE_LOG_ALL:     written = snprintf(buffer, max_len, "%sALL%s%s:   ", color, reset, bold); break;
         case CYE_LOG_NONE:    return;
         default: cye_unreachable("cye_trace_log");         break;
     }
 
+    
     //TODO: Better name
     usz fmt_size = (usz)strlen(fmt);
     memcpy(
@@ -1898,6 +1898,7 @@ void cye_trace_log(Cye_Log_Level level, const char *fmt, ...) {
 
     strcat(buffer, "\n");
     vprintf(buffer, args);
+    snprintf(buffer, max_len, "%s", reset);
     fflush(stdout);
     va_end(args);
 

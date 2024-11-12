@@ -49,9 +49,8 @@ int main(int argc, const char **argv) {
     const char *command_name = "test";
     if (argc > 0) command_name = shift(argv, argc);
 
-    if (!mkdir_if_not_exists(BUILD_FOLDER)) return 1;
-    if (!mkdir_if_not_exists(BUILD_FOLDER TESTS_FOLDER)) return 1;
-    if (!mkdir_if_not_exists(BUILD_FOLDER TOOLS_FOLDER)) return 1;
+    if (!mkdirs(BUILD_FOLDER TESTS_FOLDER)) return 1;
+    if (!mkdirs(BUILD_FOLDER TOOLS_FOLDER)) return 1;
 
     if (0 == strcmp(command_name, "test")) {
         if (argc <= 0) {
