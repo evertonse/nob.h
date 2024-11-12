@@ -16,8 +16,7 @@ void test_path_create(void) {
         {".dotfiles",     "",                "..//downloads/", ".dotfiles/../downloads/"  },
         {"..",            "double-dot",      "..",             "../double-dot/../"        }, // Double dot has to end in path separator, same for one dot
         {".",             "...",             "",               "./..."                    }, // Thress dots are not special
-        // TODO: Make this slurping /./ work
-        {".///",          ".",               "/.",             "."                        }, // We should supress /./ in the middle and it sould end with /
+        {".///",          ".",               "/.",             "./"                       }, // We should supress /./ in the middle and it sould end with /
     };
 
     const usz num_tests = count_of(test_cases);
@@ -62,7 +61,7 @@ void test_path_create(void) {
         trace_log(LOG_FATAL, "Some `%s` tests failed!", __PRETTY_FUNCTION__);
         exit(1);
     } else {
-        trace_log(LOG_INFO, "All `%s` tests succeeded!", __PRETTY_FUNCTION__);
+        trace_log(LOG_OKAY, "All `%s` tests succeeded!", __PRETTY_FUNCTION__);
     }
 }
 
@@ -126,7 +125,7 @@ void test_normalized(void) {
     if (tests_passed != num_tests) {
         trace_log(LOG_FATAL, "Some `%s` tests failed!", __PRETTY_FUNCTION__);
     } else {
-        trace_log(LOG_INFO, "All `%s` tests succeeded!", __PRETTY_FUNCTION__);
+        trace_log(LOG_OKAY, "All `%s` tests succeeded!", __PRETTY_FUNCTION__);
     }
 }
 

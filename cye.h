@@ -342,6 +342,7 @@ typedef enum {
     CYE_LOG_TRACE,          // Trace logging, intended for internal use only
     CYE_LOG_DEBUG,          // Debug logging, used for internal debugging, it should be disabled on release builds
     CYE_LOG_INFO,           // Info logging, used for program execution info
+    CYE_LOG_OKAY,             // Everthying Works, a bit more important and info but less important than error
     CYE_LOG_WARNING,        // Warning logging, used on recoverable failures
     CYE_LOG_ERROR,          // Error logging, used on unrecoverable failures
     CYE_LOG_FATAL,          // Fatal logging, used to abort program: exit(EXIT_FAILURE)
@@ -740,6 +741,7 @@ void cye_file_close(Cye_File_Handle fh);
 //------------------------------------------------------------------------------------
 void cye_trace_log(Cye_Log_Level level, const char *fmt, ...);
 #define cye_trace_info(...)  cye_trace_log(CYE_LOG_INFO, __VA_ARGS__)
+#define cye_trace_ok(...)    cye_trace_log(CYE_LOG_OKAY, __VA_ARGS__)
 #define cye_trace_error(...) cye_trace_log(CYE_LOG_ERROR, __VA_ARGS__)
 
 
@@ -1233,7 +1235,6 @@ char* cye_path_temp_normalize(ZString path) {
         .count = 0,
         .capacity = total_count
     };
-    cye_trace_log(CYE_LOG_INFO,"Path normalizing `%s`", path);
 
     // Removing repeated separators
     for (usz idx = 0; idx < path_count; ++idx) {
@@ -1321,7 +1322,8 @@ char* cye_path_create_from_array(ZString paths[], usz paths_count) {
     {
         usz chk_point = cye_temp_save();
         TString tpath = cye_path_temp_normalize(ds.items);
-        ds.items = strncpy(ds.items, tpath, total_count);
+        // `strncpy` doesn't consider '\0'. It'd be nice to consider both `n` and char `'\0'`.
+        strcpy(ds.items, tpath);
         cye_temp_rewind(chk_point);
     }
 
@@ -1853,6 +1855,7 @@ void cye_trace_log(Cye_Log_Level level, const char *fmt, ...) {
         case CYE_LOG_TRACE:   break;
         case CYE_LOG_DEBUG:   color = ESCAPE_CODE_OKCYAN;  reset = ESCAPE_CODE_RESET; break;
         case CYE_LOG_INFO:    color = ESCAPE_CODE_LOG;     reset = ESCAPE_CODE_RESET; break;
+        case CYE_LOG_OKAY:    color = ESCAPE_CODE_OKGREEN; reset = ESCAPE_CODE_RESET; break;
         case CYE_LOG_WARNING: color = ESCAPE_CODE_WARNING; reset = ESCAPE_CODE_RESET; break;
         case CYE_LOG_ERROR:   color = ESCAPE_CODE_ERROR;   reset = ESCAPE_CODE_RESET; break;
         case CYE_LOG_FATAL:   color = ESCAPE_CODE_ERROR;   reset = ESCAPE_CODE_RESET; bold = ESCAPE_CODE_BOLD; break;
@@ -1877,6 +1880,7 @@ void cye_trace_log(Cye_Log_Level level, const char *fmt, ...) {
         case CYE_LOG_TRACE:   written = snprintf(buffer, max_len, "%sTRACE%s%s: ", color, reset, bold); break;
         case CYE_LOG_DEBUG:   written = snprintf(buffer, max_len, "%sDEBUG%s%s: ", color, reset, bold); break;
         case CYE_LOG_INFO:    written = snprintf(buffer, max_len, "%sINFO%s%s:  ", color, reset, bold); break;
+        case CYE_LOG_OKAY:    written = snprintf(buffer, max_len, "%sOKAY%s%s:  ", color, reset, bold); break;
         case CYE_LOG_WARNING: written = snprintf(buffer, max_len, "%sWARN%s%s:  ", color, reset, bold); break;
         case CYE_LOG_ERROR:   written = snprintf(buffer, max_len, "%sERROR%s%s: ", color, reset, bold); break;
         case CYE_LOG_FATAL:   written = snprintf(buffer, max_len, "%sFATAL%s%s: ", color, reset, bold); break;
@@ -1959,7 +1963,7 @@ const char *cye_cpu_architecture() {
 // >
 // > https://github.com/dotnet/runtime/blob/3b63eb1346f1ddbc921374a5108d025662fb5ffd/src/coreclr/utilcode/posterror.cpp#L264-L265
 #ifndef NOB_WIN32_ERR_MSG_SIZE
-#define NOB_WIN32_ERR_MSG_SIZE (4096 * 4)
+#   define NOB_WIN32_ERR_MSG_SIZE (4096 * sizeof(WCHAR))
 #endif // NOB_WIN32_ERR_MSG_SIZE
 
 #ifdef _WIN32
@@ -2004,7 +2008,7 @@ char *nob_win32_error_message(DWORD err) {
  ...................................................................................
 */
 #ifndef _CYE_NO_SHORT_NAMES_GUARD_
-#define _CYE_NO_SHORT_NAMES_
+#define _CYE_NO_SHORT_NAMES_GUARD_
 #if !defined(CYE_NO_SHORT_NAMES)
 
 //----------------------------------------------------------------------------------
@@ -2025,6 +2029,7 @@ char *nob_win32_error_message(DWORD err) {
 #define LOG_TRACE   CYE_LOG_TRACE
 #define LOG_DEBUG   CYE_LOG_DEBUG
 #define LOG_INFO    CYE_LOG_INFO
+#define LOG_OKAY    CYE_LOG_OKAY
 #define LOG_WARNING CYE_LOG_WARNING
 #define LOG_ERROR   CYE_LOG_ERROR
 #define LOG_FATAL   CYE_LOG_FATAL
