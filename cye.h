@@ -1863,11 +1863,11 @@ void cye_trace_log(Cye_Log_Level level, const char *fmt, ...) {
     }
 
 #if !defined(_WIN32)
-    if (!isatty(level > 0 ? STDERR_FILENO : STDOUT_FILENO)) {
+    if (!isatty(STDOUT_FILENO)) {
         color = ""; reset = ""; bold = "";
     }
 #else
-    if (GetFileType( GetStdHandle(level > 0 ? STD_ERROR_HANDLE : STD_OUTPUT_HANDLE)) != FILE_TYPE_CHAR) {
+    if (GetFileType(GetStdHandle(STD_OUTPUT_HANDLE)) != FILE_TYPE_CHAR) {
         color = ""; reset = ""; bold = "";
     }
 #endif

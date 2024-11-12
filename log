@@ -1,0 +1,48 @@
+INFO:  Path normalizing `//bin////lol/dsadas/`
+INFO:  Test 0 passed, '//bin////lol/dsadas/' -> '/bin/lol/dsadas/'
+INFO:  Path normalizing `..`
+INFO:  Test 1 passed, '..' -> '../'
+INFO:  Path normalizing `./././.gitignore`
+INFO:  Test 2 passed, './././.gitignore' -> './.gitignore'
+INFO:  Path normalizing `./`
+INFO:  Test 3 passed, './' -> './'
+INFO:  Path normalizing `.`
+INFO:  Test 4 passed, '.' -> './'
+INFO:  Path normalizing `/.`
+INFO:  Test 5 passed, '/.' -> '/'
+INFO:  Path normalizing `/./`
+INFO:  Test 6 passed, '/./' -> '/'
+INFO:  Path normalizing `.///note.txt`
+INFO:  Test 7 passed, './//note.txt' -> './note.txt'
+INFO:  Path normalizing `passwords.txt`
+INFO:  Test 8 passed, 'passwords.txt' -> 'passwords.txt'
+INFO:  Path creation tests complete: 9/9 passed
+INFO:  Path normalizing `//bin////lol//dsadas/`
+INFO:  Test 0 passed, '//bin////lol' + '' + '/dsadas/' -> '/bin/lol/dsadas/'
+INFO:  Path normalizing `./dir/file/.txt`
+INFO:  Test 1 passed, './dir' + 'file' + '.txt' -> './dir/file/.txt'
+INFO:  Path normalizing `./dir//normal.txt`
+INFO:  Test 2 passed, './dir/' + '' + '/normal.txt' -> './dir/normal.txt'
+INFO:  Path normalizing `/usr///local///bin/`
+INFO:  Test 3 passed, '/usr///local/' + '' + '//bin/' -> '/usr/local/bin/'
+INFO:  Path normalizing `/home//user//`
+INFO:  Test 4 passed, '/home/' + '' + '/user//' -> '/home/user/'
+INFO:  Path normalizing `//log////`
+INFO:  Test 5 passed, '' + '//log////' + '' -> '/log/'
+INFO:  Path normalizing `/tmp/space in beteen`
+INFO:  Test 6 passed, '/tmp' + 'space in beteen' + '' -> '/tmp/space in beteen'
+INFO:  Path normalizing `local/ space-around /dir/`
+INFO:  Test 7 passed, 'local' + ' space-around ' + 'dir/' -> 'local/ space-around /dir/'
+INFO:  Path normalizing `//etc/////config//`
+INFO:  Test 8 passed, '//etc//' + '' + '///config//' -> '/etc/config/'
+INFO:  Path normalizing `.dotfiles/..//downloads/`
+ERROR: Test 9 failed, expected '.dotfiles/../downloads/' but got '.dotfiles/../downloads//' for inputs `.dotfiles`, `` and `..//downloads/`
+INFO:  Path normalizing `../double-dot/..`
+ERROR: Test 10 failed, expected '../double-dot/../' but got '../double-dot/..' for inputs `..`, `double-dot` and `..`
+INFO:  Path normalizing `./...`
+INFO:  Test 11 passed, '.' + '...' + '' -> './...'
+INFO:  Path normalizing `.///.//.`
+ERROR: Test 12 failed, expected '.' but got './' for inputs `.///`, `.` and `/.`
+INFO:  Path creation tests complete: 10/13 passed
+ERROR: Some `test_path_create` tests failed!
+[1m[31mERROR[0m:   Command exited with exit code 1
