@@ -211,6 +211,7 @@
 // Consider using logging instead ? Maybe not
 #define cye_todo(msg)        do { fprintf(stderr, "%s:%d: %s TODO: %s\n",       __FILE__, __LINE__,__PRETTY_FUNCTION__,  msg); abort(); } while(0)
 #define cye_unreachable(msg) do { fprintf(stderr, "%s:%d: %s UNREACHABLE: %s\n",__FILE__, __LINE__,__PRETTY_FUNCTION__,  msg); abort(); } while(0)
+#define cye_panic(msg)       do { fprintf(stderr, "%s:%d: %s PANIC: " msg "\n",__FILE__, __LINE__,__PRETTY_FUNCTION__); abort(); } while(0)
 #define cye_not_implemented(msg) assert(0 && msg "Not Implemented.")
 #define cye_shift(items, items_sz)  (assert((items_sz) > 0), (items_sz)--, *(items)++)
 
@@ -223,19 +224,19 @@
 #endif
 
 #ifndef cye_malloc
-#   define cye_malloc(sz)       malloc((sz))
+#   define cye_malloc  malloc
 #endif
 
 #ifndef cye_calloc
-#   define cye_calloc(n, sz)     calloc((n), (sz))
+#   define cye_calloc  calloc
 #endif
 
 #ifndef cye_realloc
-#   define cye_realloc(ptr, sz)  realloc((ptr), (sz))
+#   define cye_realloc realloc
 #endif
 
 #ifndef cye_free
-#   define cye_free(ptr)        free((ptr))
+#   define cye_free    free
 #endif
 
 #if !defined(cliteral) && defined(__cplusplus)
@@ -334,8 +335,8 @@ typedef enum {
 #define Cye_DArray(Type) \
 struct {                 \
     Type *items;         \
-    usz count;         \
-    usz capacity;      \
+    usz count;           \
+    usz capacity;        \
 }
 
 typedef struct {
@@ -352,9 +353,9 @@ typedef enum {
 } Cye_File_Type;
 
 typedef struct {
-    char  *items;
-    usz count;
-    usz capacity;
+    char* items;
+    usz   count;
+    usz   capacity;
 } Cye_DString;
 
 
@@ -396,6 +397,7 @@ typedef struct {
 
 typedef struct {
     void* (*alloc)(usz size);
+    void* (*realloc) (void *ptr, usz size);
     void  (*free)(void* ptr);
 } Cye_Context;
 
@@ -430,6 +432,7 @@ bool cye_process_wait(Cye_Process proc); // Wait until the process has finished
 // Free all the memory allocated by command arguments
 #define cye_cmd_free(cmd) CYE_FREE(cmd.items)
 
+
 // Render a string representation of a command into a dynamic string.
 void cye_ds_write_cmd(Cye_DString *ds, Cye_Command cmd);
 
@@ -459,7 +462,7 @@ bool cye_cmd_run_sync_redirect_and_reset(Cye_Command *cmd, Cye_Command_Redirect 
 #if !defined(cye_rebuild_command)
 #  ifdef _WIN32
 #    if defined(__GNUC__)
-#       define cye_rebuild_command(binary_path, source_path) "gcc", "-o", binary_path, source_path
+#       define cye_rebuild_command(binary_path, source_path) "gcc", "-o", binary_path, source_path, "-Wno-unused-parameter"
 #    elif defined(__clang__)
 #       define cye_rebuild_command(binary_path, source_path) "clang", "-o", binary_path, source_path
 #    elif defined(_MSC_VER)
@@ -481,17 +484,22 @@ void cye__rebuild_ourselves(ZString source_path, int argc, ZString *argv);
 
 
 //------------------------------------------------------------------------------------
-// Temporary Storage Functions
+// Storage Functions
 //------------------------------------------------------------------------------------
-char *cye_tstrdup(const char *cstr);
-void *cye_talloc(usz size);
+
+Cye_Context cye_temp_context(void);
+Cye_Context cye_default_context(void);
+
+char* cye_tstrdup(const char *cstr);
+void* cye_talloc(usz size);
+void* cye_trealloc(void *ptr, usz size);
 void  cye_tfree(rawptr ptr);
 
 TString cye_tprintf(ZString fmt, ...);
 
-void  cye_temp_reset(void);
-usz cye_temp_save(void);
-void  cye_temp_rewind(usz checkpoint);
+void cye_temp_reset(void);
+usz  cye_temp_save(void);
+void cye_temp_rewind(usz checkpoint);
 
 //------------------------------------------------------------------------------------
 // Path Functions
@@ -504,7 +512,7 @@ bool cye_read_entire_dir(const char *parent, Cye_Path_DArray *children);
 bool cye_write_entire_file(const char *path, const void *data, usz size);
 Cye_File_Type cye_path_file_type(const char *path);
 
-char* cye_path_create_from_array(const char* paths[], usz paths_count);
+char* cye_path_create_from_array(ZString paths[], usz paths_count);
 
 #define cye_path_create(...)                                            \
     cye_path_create_from_array(                                         \
@@ -571,6 +579,9 @@ Cye_Path_DArray cye_path_scandir(ZString path);             // Iterator of direc
 // Dynamic Array
 //------------------------------------------------------------------------------------
 
+#define cye_da_fmt "{.count=%zu, .capacity=%zu}"
+#define cye_da_fmt_arg(da) (da).count, (da).capacity
+// thread_local Cye_Context cye_context;
 // Append an item to a dynamic array
 #define cye_da_append(da, item)                                                            \
     do {                                                                                   \
@@ -578,7 +589,10 @@ Cye_Path_DArray cye_path_scandir(ZString path);             // Iterator of direc
             (da)->capacity = (da)->capacity == 0 ?                                         \
                 CYE_DARRAY_INIT_CAP :                                                      \
                 (da)->capacity*CYE_DARRAY_CAP_MULTIPLIER;                                  \
-            (da)->items = cye_realloc((da)->items, (da)->capacity*sizeof(*(da)->items));   \
+                                                                                           \
+            (da)->items = cye_context.realloc(                                             \
+                (da)->items, (da)->capacity*sizeof(((da)->items)[0])                       \
+            );                                                                             \
             assert((da)->items != NULL && "Buy more RAM lol");                             \
         }                                                                                  \
                                                                                            \
@@ -631,18 +645,28 @@ bool cye_zstr_ends_with(ZString src, ZString ending);
 #define cye_ds_write_zstr(ds, zstr)   \
     do {                              \
         const char *s = (zstr);       \
-        usz n = strlen(s);         \
+        usz n = strlen(s);            \
         cye_da_append_many(ds, s, n); \
     } while (0)
 
-// TODO: Change to ZString
 #define cye_ds_write(ds, ...)                                               \
-    cye_ds_write_buf(                                                       \
-        (ds), ((const char *[]){__VA_ARGS__}),                              \
-        (sizeof((const char *[]){__VA_ARGS__}) / sizeof(const char *)))
+    do {                                                                    \
+        const char *cye_tmp_strs[] = {__VA_ARGS__};                         \
+        for (usz idx = 0;                                                   \
+             idx < sizeof(cye_tmp_strs) / sizeof(cye_tmp_strs[0]);          \
+             idx++)                                                         \
+        {                                                                   \
+            const char *s = cye_tmp_strs[idx];                              \
+            usz n = strlen(s);                                              \
+            cye_da_append_many(ds, s, n);                                   \
+        }                                                                   \
+    } while (0)
+
+#define cye_ds_write_char(ds, ch) \
+    cye_da_append(ds, ch)
 
 // Write zero byte onto the Dynamic String
-#define cye_ds_write_zero(ds) cye_da_append_many(ds, "", 1)
+#define cye_ds_write_zero(ds) cye_ds_write_char(ds, '\0')
 
 // Free the memory allocated by the Dynamic String
 #define cye_ds_free(ds) cye_free((ds).items)
@@ -717,12 +741,11 @@ const char *cye_cpu_architecture(void);
 static struct {
     usz size;
     byte buffer[CYE_TEMP_CAPACITY];
-} temp_data = {0};
+} cye_temp_data = {0};
 
-static Cye_Log_Level threshold_log_level = CYE_LOG_INFO;
+static Cye_Log_Level cye_threshold_log_level = CYE_LOG_INFO;
 
-// thread_local Cye_Context context = {.alloc = cye_malloc, .free = cye_free};
-thread_local Cye_Context context = {.alloc = cye_talloc, .free = cye_tfree};
+thread_local Cye_Context cye_context = {.alloc = cye_malloc, .realloc = cye_realloc, .free = cye_free};
 
 //------------------------------------------------------------------------------------
 // Process and File Functions Definitions
@@ -733,6 +756,7 @@ thread_local Cye_Context context = {.alloc = cye_talloc, .free = cye_tfree};
 #else
 #   define CYE_GET_ERROR_STRING (strerror(errno))
 #endif
+
 
 Cye_File_Handle cye_open_for_write(ZString path) {
 
@@ -1056,9 +1080,16 @@ void cye__rebuild_ourselves(ZString source_path, int argc, ZString *argv) {
 
 
 //------------------------------------------------------------------------------------
-// Temporary Storage Functions Implementation
+// Storage Functions Implementation
 //------------------------------------------------------------------------------------
 
+Cye_Context cye_temp_context(void) {
+    return cliteral(Cye_Context){.alloc = cye_talloc, .realloc = cye_trealloc, .free = cye_tfree};
+}
+
+Cye_Context cye_default_context(void) {
+    return cliteral(Cye_Context){.alloc = cye_malloc, .realloc = cye_realloc, .free = cye_free};
+}
 
 TString cye_tstrdup(const char *cstr) {
     usz n = strlen(cstr);
@@ -1069,20 +1100,27 @@ TString cye_tstrdup(const char *cstr) {
     return result;
 }
 
+
 // TODO: Check out arena allocator
 rawptr cye_talloc(usz size) {
 
-    if (temp_data.size + size > CYE_TEMP_CAPACITY) return NULL;
-    rawptr result = &temp_data.buffer[temp_data.size];
-    temp_data.size += size;
+    if (cye_temp_data.size + size > CYE_TEMP_CAPACITY) return NULL;
+    rawptr result = &cye_temp_data.buffer[cye_temp_data.size];
+    cye_temp_data.size += size;
     return result;
+}
+
+void *cye_trealloc(void *ptr, usz size) {
+    unused(ptr);
+    // Fragmentation, but who cares
+    return cye_talloc(size);
 }
 
 void cye_tfree(rawptr ptr) {
     cye_trace_log(CYE_LOG_TRACE, "Temporary allocator freed");
 }
-// TODO: Function to generate default Wanings for each compiler maybe, and output binary path?
 
+// TODO: Function to generate default Wanings for each compiler maybe, and output binary path?
 TString cye_tprintf(ZString fmt, ...) {
     va_list args;
     va_start(args, fmt);
@@ -1104,15 +1142,15 @@ TString cye_tprintf(ZString fmt, ...) {
 }
 
 void  cye_temp_reset(void) {
-    temp_data.size = 0;
+    cye_temp_data.size = 0;
 }
 
 usz cye_temp_save(void) {
-    return temp_data.size;
+    return cye_temp_data.size;
 }
 
 void cye_temp_rewind(usz checkpoint) {
-    temp_data.size = checkpoint;
+    cye_temp_data.size = checkpoint;
 }
 
 
@@ -1160,37 +1198,57 @@ Cye_File_Type cye_path_file_type(const char *path) {
     cye_todo("VAI TRABALHAR VAGABUNDO");
 }
 
-char* cye_path_create_from_array(const char* paths[], usz paths_count) {
-    Cye_Context ctx = context;
+char* cye_path_create_from_array(ZString paths[], usz paths_count) {
+    Cye_Context ctx = cye_context;
 
-    for (usz idx = 0; idx < paths_count; idx += 1) {
-        cye_trace_info("path[%d/%d] = %s", idx, paths_count-1, paths[idx]);
-    }
+
     usz total_length = 0;
+    usz traling_empty_count = 0;
     for (usz i = 0; i < paths_count; i++) {
-        total_length += strlen(paths[i]);
+        usz len = strlen(paths[i]);
+        total_length += len;
+        if (len == 0) {
+            traling_empty_count += 1;
+        } else {
+            traling_empty_count = 0;
+        }
+        cye_trace_log(CYE_LOG_TRACE, "path[%d/%d] = %s", i, paths_count-1, paths[i]);
     }
 
+    paths_count = paths_count - traling_empty_count;
     // Allocate memory for the final path
-    char* result = ctx.alloc(total_length + paths_count + 1);
-    result[0] = '\0';
+    Cye_DString ds = {
+        .items = ctx.alloc(total_length + paths_count + 1),
+        .count = 0,
+        .capacity = total_length + paths_count + 1
+    };
 
     // Concatenate the paths, removing repeated separators
     for (usz i = 0; i < paths_count; i++) {
-        if (i > 0 && result[strlen(result) - 1] == PATH_SEPARATOR_CHAR && paths[i][0] == PATH_SEPARATOR_CHAR) {
-            // Skip the leading separator if the previous path ended with one
-            strcat(result, paths[i] + 1);
-        } else {
-            strcat(result, paths[i]);
+        for (usz j = 0; paths[i][j] != '\0'; ++j) {
+            bool curr_is_sep = paths[i][j] == PATH_SEPARATOR_CHAR;
+            bool prev_is_sep = ds.count > 0 && (ds.items[ds.count-1] == PATH_SEPARATOR_CHAR);
+            // int rev_dot_count = 0;
+            bool should_write = !(curr_is_sep && prev_is_sep);
+            if (should_write) {
+                cye_ds_write_char(&ds, paths[i][j]);
+            }
         }
 
-        if (i < paths_count - 1 && paths[i][strlen(paths[i]) - 1] != PATH_SEPARATOR_CHAR) {
-            // Add a separator if the current path doesn't have one
-            strcat(result, "/");
+        if (i < (paths_count-1) && ds.count > 0 && (ds.items[ds.count-1] != PATH_SEPARATOR_CHAR)) {
+            cye_ds_write(&ds, PATH_SEPARATOR);
         }
     }
 
-    return result;
+    // Should have been an upperbound on allocated stuff
+    if (ds.capacity <= ds.count) {
+        printf("ds = "cye_da_fmt"\n", cye_da_fmt_arg(ds));
+        cye_panic();
+    }
+    cye_ds_write_zero(&ds);
+    // cye_trace_log(CYE_LOG_FATAL,"ds.items = %s", ds.items);
+
+    return ds.items;
 }
 
 ZString cye_base_name(const char *path) { cye_todo("VAI TRABALHAR VAGABUNDO"); }
@@ -1434,7 +1492,7 @@ bool cye_remove_dirs(ZString path) {
 
 //  Move file or directory
 bool cye_path_move(ZString src, ZString dst) {
-    
+
     cye_trace_info("Moving %s -> %s", src, dst);
 #ifndef _WIN32 // Unix
     // On Unix-like systems, rename() can move files across directories
@@ -1582,7 +1640,7 @@ int cye_float_equals(f32 x, f32 y) {
 
 void cye_trace_log(Cye_Log_Level level, const char *fmt, ...) {
     // Level below current threshold, don't log anythin
-    if (level < threshold_log_level) return;
+    if (level < cye_threshold_log_level) return;
 
     va_list args;
     va_start(args, fmt);
@@ -1758,6 +1816,15 @@ char *nob_win32_error_message(DWORD err) {
 #define Context          Cye_Context
 
 //------------------------------------------------------------------------------------
+// Global Variables Definition
+//------------------------------------------------------------------------------------
+
+#define temp_data           cye_temp_data
+#define threshold_log_level cye_threshold_log_level
+#define context             cye_context
+
+
+//------------------------------------------------------------------------------------
 // Process and File Short Names
 //------------------------------------------------------------------------------------
 #define open_for_write             cye_open_for_write
@@ -1788,8 +1855,13 @@ char *nob_win32_error_message(DWORD err) {
 
 
 //------------------------------------------------------------------------------------
-// Temporary Storage Functions
+// Storage Functions
 //------------------------------------------------------------------------------------
+
+
+#define temp_context    cye_temp_context
+#define default_context cye_default_context
+
 #define tstrdup     cye_tstrdup
 #define talloc      cye_talloc
 #define tprintf     cye_tprintf
@@ -1862,7 +1934,8 @@ char *nob_win32_error_message(DWORD err) {
 //------------------------------------------------------------------------------------
 // Dynamic Array
 //------------------------------------------------------------------------------------
-
+#define da_fmt         cye_da_fmt
+#define da_fmt_arg     cye_da_fmt_arg
 #define da_append      cye_da_append
 #define da_free        cye_da_free
 #define da_append_many cye_da_append_many

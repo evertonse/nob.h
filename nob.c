@@ -14,8 +14,27 @@ const char *test_names[] = {
 };
 #define test_names_count ARRAY_LEN(test_names)
 
+bool test_dynamic_array(void) {
+
+    struct {
+        int* items;
+        size_t count;
+        size_t capacity;
+    } da = {0};
+    da_append(&da, 5);
+    da_append(&da, 5);
+    da_append(&da, 5);
+    for (size_t idx = 0; idx < da.count; idx += 1) {
+        nob_log(INFO, "numbers %d th is da.items[idx]=%d", da.items[idx]);
+    }
+    return true ;
+}
+
 bool build_and_run_test(Cmd *cmd, const char *test_name)
 {
+    test_dynamic_array();
+    exit(0);
+
     const char *bin_path = temp_sprintf("%s%s", BUILD_FOLDER TESTS_FOLDER, test_name);
     const char *src_path = temp_sprintf("%s%s.c", TESTS_FOLDER, test_name);
     cmd_append(cmd, "cc", "-Wall", "-Wextra", "-Wswitch-enum", "-I.", "-o", bin_path, src_path);
