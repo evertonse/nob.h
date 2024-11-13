@@ -17,7 +17,7 @@
  ...................................................................................
 */
 //----------------------------------------------------------------------------------
-// Basic Includes
+//  Basic Includes
 //----------------------------------------------------------------------------------
 
 #include <assert.h>
@@ -33,6 +33,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+
 #ifdef _WIN32
 #    define WIN32_LEAN_AND_MEAN
 #    define _WINUSER_
@@ -44,12 +45,14 @@
 #    include <shellapi.h>
 #    define PATH_SEPARATOR "\\"
 #    define PATH_SEPARATOR_CHAR '\\'
+#    define PATH_MAX MAX_PATH
 #else
 #    include <sys/types.h>
 #    include <sys/wait.h>
 #    include <sys/stat.h>
 #    include <unistd.h>
 #    include <fcntl.h>
+#    include <dirent.h>
 #    define PATH_SEPARATOR "/"
 #    define PATH_SEPARATOR_CHAR '/'
 #endif
@@ -57,7 +60,7 @@
 
 
 //----------------------------------------------------------------------------------
-// Basic Definitions with No Prefix
+//  Basic Definitions with No Prefix
 //----------------------------------------------------------------------------------
 
 // #define cye_return_defer(value) do { result = (value); goto defer; } while(0)
@@ -110,6 +113,12 @@
 #       define force_inline __forceinline
 #       define force_noinline __declspec(noinline)
 #   endif
+#endif
+
+#if defined(__GNUC__) || defined(__GNUG__)
+#   define force_restrict __restrict__
+#elif defined(_MSC_VER)
+#   define force_restrict __restrict
 #endif
 
 #if !defined(thread_local)
@@ -222,7 +231,7 @@
 #endif
 
 //----------------------------------------------------------------------------------
-// Tweakable Constants
+//  Tweakable Constants
 //----------------------------------------------------------------------------------
 
 // Consider using logging instead ? Maybe not
@@ -287,7 +296,7 @@
  ...................................................................................
 */
 //----------------------------------------------------------------------------------
-// Structures Definition without Prefix
+//  Structures Definition without Prefix
 //----------------------------------------------------------------------------------
 
 // Boolean type
@@ -333,7 +342,7 @@ typedef       char* TString; // Temporary String
 typedef       char* MutString; // Mutable String, might be temporary or not
 
 //----------------------------------------------------------------------------------
-// Structures Definition with Prefix
+//  Structures Definition with Prefix
 //----------------------------------------------------------------------------------
 
 // NOTE: Organized by priority level
@@ -406,16 +415,16 @@ typedef struct {
     Cye_File_Handle *err;
 } Cye_Command_Redirect;
 
-// TODO: Generic Slicing
 typedef struct {
     usz count;
     const char *data;
 } Cye_String_Slice;
 
 typedef struct {
-    void* (*alloc)(usz size);
-    void* (*realloc) (void *ptr, usz size);
-    void  (*free)(void* ptr);
+    void*  (*alloc)(usz size);
+    void*  (*realloc) (void *ptr, usz size);
+    void   (*free)(void* ptr);
+    rawptr any;
 } Cye_Context;
 
 
@@ -427,7 +436,7 @@ typedef struct {
 */
 
 //------------------------------------------------------------------------------------
-// Process and File Functions
+//  Process and File Functions
 //------------------------------------------------------------------------------------
 Cye_File_Handle cye_open_for_write(const char *path);
 void cye_file_close(Cye_File_Handle handle);
@@ -436,7 +445,7 @@ bool cye_process_wait_all_and_reset(Cye_Process_DArray *procs);
 bool cye_process_wait(Cye_Process proc); // Wait until the process has finished
 
 //------------------------------------------------------------------------------------
-// Commands Functions
+//  Commands Functions
 //------------------------------------------------------------------------------------
 #define cye_cmd_append(cmd, ...)              \
     cye_da_append_many(                       \
@@ -501,11 +510,12 @@ void cye__rebuild_ourselves(ZString source_path, int argc, ZString *argv);
 
 
 //------------------------------------------------------------------------------------
-// Storage Functions
+//  Storage Functions
 //------------------------------------------------------------------------------------
 
 Cye_Context cye_temp_context(void);
 Cye_Context cye_default_context(void);
+u0          cye_set_default_context(Cye_Context ctx);
 
 char* cye_tstrdup(const char *cstr);
 void* cye_talloc(usz size);
@@ -519,7 +529,7 @@ usz  cye_temp_save(void);
 void cye_temp_rewind(usz checkpoint);
 
 //------------------------------------------------------------------------------------
-// Path Functions
+//  Path Functions
 //------------------------------------------------------------------------------------
 
 bool cye_mkdir_if_not_exists(const char *path);
@@ -597,7 +607,7 @@ Cye_Path_DArray cye_path_scandir(ZString path);             // Iterator of direc
 
 
 //------------------------------------------------------------------------------------
-// Dynamic Array
+//  Dynamic Array
 //------------------------------------------------------------------------------------
 
 #define cye_da_fmt         "{.count=%zu, .capacity=%zu}"
@@ -640,26 +650,128 @@ Cye_Path_DArray cye_path_scandir(ZString path);             // Iterator of direc
 
 
 //------------------------------------------------------------------------------------
-// String Functions
+//  Slices Functions
 //------------------------------------------------------------------------------------
 
-// printf macros for String_View
-#ifndef SV_FMT
-#   define SV_FMT "%.*s"
-#endif // SV_Fmt
-#ifndef SV_ARG
-#   define SV_ARG(sv) (int) (sv).count, (sv).data
-#endif // SV_Arg
+
+#define cye_slice_fmt "{.data=%p, .count=%zu}"
+#define cye_slice_fmt_arg(slice)  slice.data, slice.count
+// Generic slice structure
+#define Cye_Slice(T) struct { T data; usz count; }
+
+// Create a slice from an pointer and count
+#define cye_slice_make(ptr, cnt) {.data = (ptr), .count = (cnt)}
+
+// Create a slice from an array literal
+#define cye_slice_from_arr(arr) cye_slice_make((arr), sizeof(arr)/sizeof((arr)[0]))
+
+// Create an empty slice
+#define cye_slice_empty(T) ((T)){.data = NULL, .count = 0}
+#define CYE_STR_SLICE_EMPTY (const Cye_String_Slice){.data = NULL, .count = 0}
+
+// Get subslice [start, end)
+#define cye_slice_range(ptr, start, end) \
+    cye_slice_make(ptr + (start), ((end) - (start)))
+
+// Get first n elements
+#define cye_slice_prefix(ptr, n) \
+    cye_slice_make(ptr, (n))
+
+// Get last n elements
+#define cye_slice_suffix(slice, n) \
+    cye_slice_make((slice).data + ((slice).count - (n)), (n))
+
+// Compare two slices
+#define cye_slice_equal(a, b) \
+    (((a).count == (b).count) && \
+     (memcmp((a).data, (b).data, (a).count * sizeof(*(a).data)) == 0))
+
+// Check if slice contains element
+#define cye_slice_contains(slice, elem) ({ \
+    bool found = false; \
+    for(usz i = 0; i < (slice).count; i++) { \
+        if ((slice).data[i] == (elem)) { \
+            found = true; \
+            break; \
+        } \
+    } \
+    found; \
+})
+
+// Check if slice is empty
+#define cye_slice_is_empty(slice) ((slice).count == 0)
+
+// Get element at index with bounds checking
+#define cye_slice_at(slice, idx) \
+    (((idx) < (slice).count) ? (slice).data[idx] : NULL)
+
+// Copy slice to buffer
+#define cye_slice_copy(dst, src) \
+    memcpy((dst).data, (src).data, (src).count * sizeof(*(src).data))
+
+// Find index of element
+#define cye_slice_index_of(slice, elem) ({ \
+    usz idx = (usz)-1; \
+    for(usz i = 0; i < (slice).count; i++) { \
+        if ((slice).data[i] == (elem)) { \
+            idx = i; \
+            break; \
+        } \
+    } \
+    idx; \
+})
+
+//------------------------------------------------------------------------------------
+//  String Slice Functions
+//------------------------------------------------------------------------------------
+
+#define cye_ss_fmt "%.*s"
+#define cye_ss_fmt_arg(sv) (int)(sv).count, (sv).data
 
 
-// ZString nob_temp_sv_to_zstr(Cye_String_Slice sv);
+Cye_String_Slice cye_str_slice_make(const char *str);
+
+// Trim whitespace from both ends
+Cye_String_Slice cye_str_slice_trim(Cye_String_Slice s);
+
+// String slice to null-terminated string (requires buffer)
+void cye_str_slice_to_zstr(Cye_String_Slice s, char *buf, usz buf_size);
+
+// Strip left whitespace
+Cye_String_Slice cye_str_slice_strip_left(Cye_String_Slice s);
+
+// Strip right whitespace
+Cye_String_Slice cye_str_slice_strip_right(Cye_String_Slice s);
+
+// Create string slice from string and explicit length
+Cye_String_Slice cye_str_slice_make_len(const char *str, usz len);
+
+// Compare two string slices
+bool cye_str_slice_equal(Cye_String_Slice a, Cye_String_Slice b);
+
+// Check if string slice contains substring
+bool cye_str_slice_contains(Cye_String_Slice haystack, Cye_String_Slice needle);
+
+// Split string slice at first occurrence of delimiter
+void cye_str_slice_split_first(Cye_String_Slice s, char delim, Cye_String_Slice *before, Cye_String_Slice *after);
+
+// Check if string slice starts with prefix
+bool cye_str_slice_starts_with(Cye_String_Slice s, Cye_String_Slice prefix);
+
+// Check if string slice ends with suffix
+bool cye_str_slice_ends_with(Cye_String_Slice s, Cye_String_Slice suffix);
+
+//------------------------------------------------------------------------------------
+//  ZString Functions
+//------------------------------------------------------------------------------------
+
 bool cye_zstr_ends_with(ZString src, ZString ending);
 
 // TODO: Add String Slices Functions as we need
 
 
 //----------------------------------------------------------------------------------
-// Dynamic String Functions
+//  Dynamic String Functions
 //----------------------------------------------------------------------------------
 
 #define cye_ds_fmt "{.items=%s, .count=%zu, .capacity=%zu}"
@@ -701,7 +813,7 @@ void cye_ds_printf(Cye_DString *ds, ZString fmt, ...);
 
 
 //----------------------------------------------------------------------------------
-// Mathematics Functions
+//  Mathematics Functions
 //----------------------------------------------------------------------------------
 #ifndef cye_max
 #   define cye_max(value1, value2) ((value1) > (value2)) ? (value1) : (value2);
@@ -730,14 +842,14 @@ f32 cye_wrap(f32 value, f32 min, f32 max);
 int cye_float_equals(f32 x, f32 y);
 
 //------------------------------------------------------------------------------------
-// Process and File Functions
+//  Process and File Functions
 //------------------------------------------------------------------------------------
 Cye_File_Handle cye_open_for_read(const char *path);
 Cye_File_Handle cye_open_for_write(const char *path);
 void cye_file_close(Cye_File_Handle fh);
 
 //------------------------------------------------------------------------------------
-// Utils Functions
+//  Utils Functions
 //------------------------------------------------------------------------------------
 void cye_trace_log(Cye_Log_Level level, const char *fmt, ...);
 #define cye_trace_info(...)  cye_trace_log(CYE_LOG_INFO, __VA_ARGS__)
@@ -761,7 +873,7 @@ const char *cye_cpu_architecture(void);
 #if defined(CYE_IMPLEMENTATION)
 
 //------------------------------------------------------------------------------------
-// Global Variables Definition
+//  Global Variables Definition
 //------------------------------------------------------------------------------------
 
 static struct {
@@ -771,10 +883,10 @@ static struct {
 
 static Cye_Log_Level cye_threshold_log_level = CYE_LOG_INFO;
 
-thread_local Cye_Context cye_context = {.alloc = cye_malloc, .realloc = cye_realloc, .free = cye_free};
+thread_local Cye_Context cye_context = {.alloc = cye_malloc, .realloc = cye_realloc, .free = cye_free, .any=null};
 
 //------------------------------------------------------------------------------------
-// Process and File Functions Definitions
+//  Process and File Functions Definitions
 //------------------------------------------------------------------------------------
 
 #ifdef _WIN32
@@ -903,7 +1015,7 @@ bool cye_process_wait(Cye_Process proc) {
 }
 
 //------------------------------------------------------------------------------------
-// Commands Functions Implementation
+//  Commands Functions Implementation
 //------------------------------------------------------------------------------------
 void cye_ds_write_cmd(Cye_DString *ds, Cye_Command cmd) {
     for (usz i = 0; i < cmd.count; ++i) {
@@ -1106,15 +1218,20 @@ void cye__rebuild_ourselves(ZString source_path, int argc, ZString *argv) {
 
 
 //------------------------------------------------------------------------------------
-// Storage Functions Implementation
+//  Storage Functions Implementation
 //------------------------------------------------------------------------------------
 
 Cye_Context cye_temp_context(void) {
-    return cliteral(Cye_Context){.alloc = cye_talloc, .realloc = cye_trealloc, .free = cye_tfree};
+    // Gets whatever was in the cye_context.any
+    return cliteral(Cye_Context){.alloc = cye_talloc, .realloc = cye_trealloc, .free = cye_tfree, cye_context.any};
 }
 
 Cye_Context cye_default_context(void) {
-    return cliteral(Cye_Context){.alloc = cye_malloc, .realloc = cye_realloc, .free = cye_free};
+    return cliteral(Cye_Context){.alloc = cye_malloc, .realloc = cye_realloc, .free = cye_free, .any=null};
+}
+
+u0 cye_set_default_context(Cye_Context ctx) {
+    cye_panic("YAY");
 }
 
 TString cye_tstrdup(const char *cstr) {
@@ -1181,7 +1298,7 @@ void cye_temp_rewind(usz checkpoint) {
 
 
 //------------------------------------------------------------------------------------
-// Path Functions Implementation
+//  Path Functions Implementation
 //------------------------------------------------------------------------------------
 
 bool cye_mkdir_if_not_exists(const char *path) {
@@ -1221,7 +1338,30 @@ bool cye_write_entire_file(const char *path, const void *data, usz size) {
 }
 
 Cye_File_Type cye_path_file_type(const char *path) {
-    cye_todo("VAI TRABALHAR VAGABUNDO");
+#ifndef _WIN32
+    struct stat statbuf;
+    if (stat(path, &statbuf) < 0) {
+        cye_trace_error("Could not get stat of %s: %s", path, strerror(errno));
+        return -1;
+    }
+
+    switch (statbuf.st_mode & S_IFMT) {
+        case S_IFDIR:  return CYE_FILE_TYPE_DIRECTORY;
+        case S_IFREG:  return CYE_FILE_TYPE_REGULAR;
+        case S_IFLNK:  return CYE_FILE_TYPE_SYMLINK;
+        default:       return CYE_FILE_TYPE_OTHER;
+    }
+#else // _WIN32
+    DWORD attr = GetFileAttributesA(path);
+    if (attr == INVALID_FILE_ATTRIBUTES) {
+        cye_trace_error("Could not get file attributes of %s: %lu", path, GetLastError());
+        return -1;
+    }
+
+    if (attr & FILE_ATTRIBUTE_DIRECTORY) return CYE_FILE_TYPE_DIRECTORY;
+    // TODO: detect symlinks on Windows (whatever that means on Windows anyway)
+    return CYE_FILE_TYPE_REGULAR;
+#endif // _WIN32
 }
 
 char* cye_path_temp_normalize(ZString path) {
@@ -1457,7 +1597,20 @@ bool cye_path_set_cwd(const char *path) {
 
 
 bool cye_file_exists(const char *file_path) {
-    cye_todo("VAI TRABALHAR VAGABUNDO");
+#ifndef _WIN32
+
+    struct stat statbuf;
+    if (stat(file_path, &statbuf) < 0) {
+        if (errno == ENOENT) return 0;
+        cye_trace_error("Could not check if file %s exists: %s", file_path, strerror(errno));
+        return -1;
+    }
+    return 1;
+#else
+    // TODO: distinguish between "does not exists" and other errors
+    DWORD dwAttrib = GetFileAttributesA(file_path);
+    return dwAttrib != INVALID_FILE_ATTRIBUTES;
+#endif
 }
 
 // Check if path is absolute
@@ -1627,12 +1780,172 @@ bool cye_mkdir_include_parents(ZString path) {
 
 //  Remove file
 bool cye_remove_file(ZString path) {
-    cye_todo("New Functions to Work on");
+    if (!cye_file_exists(path)) {
+        cye_trace_info("file `%s` does not exist", path);
+        return true;
+    }
+    
+    Cye_File_Type type = cye_path_file_type(path);
+    
+    if (type != CYE_FILE_TYPE_REGULAR) {
+        cye_trace_error("`%s` exists but is not a regular file", path);
+        return false;
+    }
+
+    if (type == CYE_FILE_TYPE_DIRECTORY) {
+        cye_trace_error("`%s` exists but is a directory, should we make a recursive remove function?", path);
+        return false;
+    }
+
+#ifdef _WIN32
+    int result = remove(path);
+#else
+    // https://www.man7.org/linux/man-pages/man2/unlink.2.html
+    int result = unlink(path);
+#endif
+
+    if (result < 0) {
+        cye_trace_error("could not remove file `%s`: %s", path, strerror(errno));
+        return false;
+    }
+    
+    cye_trace_info("removed file `%s`", path);
+    return true;
+
 }
 
-//  Remove directory
-bool cye_remove_dir(ZString path) {
-    cye_todo("New Functions to Work on");
+
+// Helper function to join paths
+static void path_join(char *dest, const char *dir, const char *file) {
+    size_t dir_len = strlen(dir);
+    strcpy(dest, dir);
+    
+    #ifdef _WIN32
+        if (dir_len > 0 && dir[dir_len - 1] != '\\') {
+            strcat(dest, "\\");
+        }
+    #else
+        if (dir_len > 0 && dir[dir_len - 1] != '/') {
+            strcat(dest, "/");
+        }
+    #endif
+    
+    strcat(dest, file);
+}
+
+// Remove directory recursively
+bool cye_remove_dir(const char *path) {
+    char full_path[PATH_MAX];
+    bool success = true;
+    
+#ifndef _WIN32
+    DIR *dir = opendir(path);
+    if (!dir) {
+        if (errno == ENOENT) {
+            // Directory doesn't exist
+            return true;
+        }
+        cye_trace_error("could not open directory `%s`: %s", path, strerror(errno));
+        return false;
+    }
+    
+    struct dirent *entry;
+    while ((entry = readdir(dir))) {
+        // Skip "." and ".." directories
+        if (strcmp(entry->d_name, ".") == 0 ||
+            strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+        
+        path_join(full_path, path, entry->d_name);
+        
+        struct stat statbuf;
+        if (stat(full_path, &statbuf) != 0) {
+            cye_trace_error("could not stat `%s`: %s", full_path, strerror(errno));
+            success = false;
+            continue;
+        }
+        
+        if (S_ISDIR(statbuf.st_mode)) {
+            // Recursively remove subdirectory
+            if (!cye_remove_dir(full_path)) {
+                success = false;
+            }
+        } else {
+            // Remove file
+            if (unlink(full_path) != 0) {
+                cye_trace_error("could not delete file `%s`: %s", full_path, strerror(errno));
+                success = false;
+            } else {
+                cye_trace_info("deleted file `%s`", full_path);
+            }
+        }
+    }
+    
+    closedir(dir);
+    
+    // Remove the empty directory
+    if (success && rmdir(path) != 0) {
+        cye_trace_error("could not remove directory `%s`: %s", path, strerror(errno));
+        success = false;
+    } else if (success) {
+        cye_trace_info("Removed directory `%s`", path);
+    }
+#else
+    WIN32_FIND_DATA find_data;
+    char search_path[PATH_MAX];
+    
+    // Prepare search path
+    snprintf(search_path, sizeof(search_path), "%s\\*", path);
+    
+    HANDLE find_handle = FindFirstFile(search_path, &find_data);
+    if (find_handle == INVALID_HANDLE_VALUE) {
+        if (GetLastError() == ERROR_FILE_NOT_FOUND) {
+            // Directory is empty
+            return RemoveDirectory(path);
+        }
+        cye_trace_error("could not open directory `%s`: %lu", path, GetLastError());
+        return false;
+    }
+    
+    do {
+        // Skip "." and ".." directories
+        if (strcmp(find_data.cFileName, ".") == 0 || 
+            strcmp(find_data.cFileName, "..") == 0) {
+            continue;
+        }
+        
+        path_join(full_path, path, find_data.cFileName);
+        
+        if (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            // Recursively remove subdirectory
+            if (!cye_remove_directory(full_path)) {
+                success = false;
+            }
+        } else {
+            // Remove file
+            if (!DeleteFile(full_path)) {
+                cye_trace_error("could not delete file `%s`: %lu", full_path, GetLastError());
+                success = false;
+            } else {
+                cye_trace_info("deleted file `%s`", full_path);
+            }
+        }
+    } while (FindNextFile(find_handle, &find_data));
+    
+    FindClose(find_handle);
+    
+    // Remove the empty directory
+    if (success && !RemoveDirectory(path)) {
+        cye_trace_error("could not remove directory `%s`: %lu", path, GetLastError());
+        success = false;
+    } else if (success) {
+        cye_trace_info("Removed directory `%s`", path);
+    }
+    
+#endif
+    
+    return success;
 }
 
 //  Remove directories recursively
@@ -1683,13 +1996,118 @@ Cye_Path_DArray cye_path_scandir(ZString path) {
 
 
 //------------------------------------------------------------------------------------
-// Dynamic Array Implementation
+//  Dynamic Array Implementation
 //------------------------------------------------------------------------------------
 
-// All are macros xD
+// All macros xD
+
+//------------------------------------------------------------------------------------
+//  Slices Implementation
+//------------------------------------------------------------------------------------
+
+// All macros xD
+
+
+
+//------------------------------------------------------------------------------------
+//  String Slice Implementation
+//------------------------------------------------------------------------------------
+
+Cye_String_Slice cye_str_slice_make(const char *str) {
+    return (Cye_String_Slice)cye_slice_make(str, strlen(str));
+}
+
+// Trim whitespace from both ends
+Cye_String_Slice cye_str_slice_trim(Cye_String_Slice s) {
+    while (s.count > 0 && isspace(s.data[0])) {
+        s.data++;
+        s.count--;
+    }
+    while (s.count > 0 && isspace(s.data[s.count - 1])) {
+        s.count--;
+    }
+    return s;
+}
+
+// String slice to null-terminated string (requires buffer)
+void cye_str_slice_to_zstr(Cye_String_Slice s, char *buf, usz buf_size) {
+    usz to_copy = s.count < buf_size - 1 ? s.count : buf_size - 1;
+    memcpy(buf, s.data, to_copy);
+    buf[to_copy] = '\0';
+}
+
+
+// New function: Strip left whitespace
+Cye_String_Slice cye_str_slice_strip_left(Cye_String_Slice s) {
+    while (s.count > 0 && isspace(s.data[0])) {
+        s.data++;
+        s.count--;
+    }
+    return s;
+}
+
+// New function: Strip right whitespace
+Cye_String_Slice cye_str_slice_strip_right(Cye_String_Slice s) {
+    while (s.count > 0 && isspace(s.data[s.count - 1])) {
+        s.count--;
+    }
+    return s;
+}
+// Create string slice from string and explicit length
+Cye_String_Slice cye_str_slice_make_len(const char *str, usz len) {
+    return (Cye_String_Slice)cye_slice_make((char*)str, len);
+}
+
+// Compare two string slices
+bool cye_str_slice_equal(Cye_String_Slice a, Cye_String_Slice b) {
+    if (a.count != b.count) return false;
+    return memcmp(a.data, b.data, a.count) == 0;
+}
+
+// Check if string slice contains substring
+bool cye_str_slice_contains(Cye_String_Slice haystack, Cye_String_Slice needle) {
+    if (needle.count > haystack.count) return false;
+
+    for (usz i = 0; i <= haystack.count - needle.count; i++) {
+        if (memcmp(haystack.data + i, needle.data, needle.count) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+
+// Split string slice at first occurrence of delimiter
+void cye_str_slice_split_first(Cye_String_Slice s, char delim, Cye_String_Slice *before, Cye_String_Slice *after) {
+    for (usz i = 0; i < s.count; i++) {
+        if (s.data[i] == delim) {
+            if (before) *before = (Cye_String_Slice)cye_slice_make(s.data, i);
+            if (after) *after = (Cye_String_Slice)cye_slice_make(s.data + i + 1, s.count - i - 1);
+            return;
+        }
+    }
+    if (before) *before = s;
+    if (after) *after = CYE_STR_SLICE_EMPTY;
+}
+
+// Check if string slice starts with prefix
+bool cye_str_slice_starts_with(Cye_String_Slice s, Cye_String_Slice prefix) {
+    if (prefix.count > s.count) return false;
+    return memcmp(s.data, prefix.data, prefix.count) == 0;
+}
+
+// Check if string slice ends with suffix
+bool cye_str_slice_ends_with(Cye_String_Slice s, Cye_String_Slice suffix) {
+    if (suffix.count > s.count) return false;
+    return memcmp(s.data + s.count - suffix.count, suffix.data, suffix.count) == 0;
+}
+
+//------------------------------------------------------------------------------------
+//  ZString Implementation
+//------------------------------------------------------------------------------------
 
 //----------------------------------------------------------------------------------
-// Dynamic String Implementation
+//  Dynamic String Implementation
 //----------------------------------------------------------------------------------
 
 
@@ -1733,12 +2151,12 @@ void cye_ds_printf(Cye_DString *ds, ZString fmt, ...) {
     va_start(args, fmt);
     vsnprintf(result, n + 1, fmt, args);
     va_end(args);
-    cye_ds_write_buf(ds, result, n + 1);
+    cye_ds_write_buf(ds, result, n); // Don't write the null terminator
     cye_temp_rewind(chk_point);
 }
 
 //------------------------------------------------------------------------------------
-// String Functions Implementation
+//  String Functions Implementation
 //------------------------------------------------------------------------------------
 
 bool cye_zstr_ends_with(ZString src, ZString ending) {
@@ -1768,7 +2186,7 @@ bool cye_zstr_starts_with(ZString src, ZString prefix) {
 }
 
 //----------------------------------------------------------------------------------
-// Utils Math Implemenetation
+//  Utils Math Implemenetation
 //----------------------------------------------------------------------------------
 
 // Clamp float value
@@ -1834,7 +2252,7 @@ int cye_float_equals(f32 x, f32 y) {
 }
 
 //------------------------------------------------------------------------------------
-// Utils Functions Implemenetation
+//  Utils Functions Implemenetation
 //------------------------------------------------------------------------------------
 
 // TODO: Add colors from nabs.h
@@ -1889,7 +2307,7 @@ void cye_trace_log(Cye_Log_Level level, const char *fmt, ...) {
         default: cye_unreachable("cye_trace_log");         break;
     }
 
-    
+
     //TODO: Better name
     usz fmt_size = (usz)strlen(fmt);
     memcpy(
@@ -1962,16 +2380,16 @@ const char *cye_cpu_architecture() {
 // > .NET Core uses 4096 * sizeof(WCHAR) buffer on stack for FormatMessageW call. And...thats it.
 // >
 // > https://github.com/dotnet/runtime/blob/3b63eb1346f1ddbc921374a5108d025662fb5ffd/src/coreclr/utilcode/posterror.cpp#L264-L265
-#ifndef NOB_WIN32_ERR_MSG_SIZE
-#   define NOB_WIN32_ERR_MSG_SIZE (4096 * sizeof(WCHAR))
-#endif // NOB_WIN32_ERR_MSG_SIZE
+#ifndef CYE_WIN32_ERR_MSG_SIZE
+#   define CYE_WIN32_ERR_MSG_SIZE (4096 * sizeof(WCHAR))
+#endif // CYE_WIN32_ERR_MSG_SIZE
 
 #ifdef _WIN32
 char *nob_win32_error_message(DWORD err) {
-    static char win32ErrMsg[NOB_WIN32_ERR_MSG_SIZE] = {0};
+    static char win32ErrMsg[CYE_WIN32_ERR_MSG_SIZE] = {0};
     DWORD errMsgSize = FormatMessageA(
         FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, err,
-        LANG_USER_DEFAULT, win32ErrMsg, NOB_WIN32_ERR_MSG_SIZE, NULL
+        LANG_USER_DEFAULT, win32ErrMsg, CYE_WIN32_ERR_MSG_SIZE, NULL
     );
 
     if (errMsgSize == 0) {
@@ -2012,17 +2430,16 @@ char *nob_win32_error_message(DWORD err) {
 #if !defined(CYE_NO_SHORT_NAMES)
 
 //----------------------------------------------------------------------------------
-// Tweakable Constants
+//  Tweakable Constants Short Names
 //----------------------------------------------------------------------------------
 
-// Consider using logging instead ? Maybe not
-#define todo cye_todo
-#define unreachable cye_unreachable
+#define todo            cye_todo
+#define unreachable     cye_unreachable
 #define not_implemented cye_not_implemented
-#define shift cye_shift
+#define shift           cye_shift
 
 //----------------------------------------------------------------------------------
-// Structures Definition with Prefix
+//  Structures Definition with Prefix Short Names
 //----------------------------------------------------------------------------------
 
 #define LOG_ALL     CYE_LOG_ALL
@@ -2049,7 +2466,7 @@ char *nob_win32_error_message(DWORD err) {
 #define Context          Cye_Context
 
 //------------------------------------------------------------------------------------
-// Global Variables Definition
+//  Global Variables Short Names
 //------------------------------------------------------------------------------------
 
 #define temp_data           cye_temp_data
@@ -2058,7 +2475,7 @@ char *nob_win32_error_message(DWORD err) {
 
 
 //------------------------------------------------------------------------------------
-// Process and File Short Names
+//  Process and File Short Names
 //------------------------------------------------------------------------------------
 #define open_for_write             cye_open_for_write
 #define file_close                 cye_file_close
@@ -2067,7 +2484,7 @@ char *nob_win32_error_message(DWORD err) {
 #define process_wait               cye_process_wait
 
 //------------------------------------------------------------------------------------
-// Commands Short Names
+//  Commands Short Names
 //------------------------------------------------------------------------------------
 #define cmd_append                       cye_cmd_append
 
@@ -2088,12 +2505,13 @@ char *nob_win32_error_message(DWORD err) {
 
 
 //------------------------------------------------------------------------------------
-// Storage Functions
+//  Storage Short Names
 //------------------------------------------------------------------------------------
 
 
-#define temp_context    cye_temp_context
-#define default_context cye_default_context
+#define temp_context        cye_temp_context
+#define default_context     cye_default_context
+#define set_default_context cye_set_default_context
 
 #define tstrdup     cye_tstrdup
 #define talloc      cye_talloc
@@ -2104,7 +2522,7 @@ char *nob_win32_error_message(DWORD err) {
 #define temp_rewind cye_temp_rewind
 
 //------------------------------------------------------------------------------------
-// Path Functions
+//  Path Short Names
 //------------------------------------------------------------------------------------
 
 #define mkdir_if_not_exists             cye_mkdir_if_not_exists
@@ -2169,7 +2587,7 @@ char *nob_win32_error_message(DWORD err) {
 #define path_scandir                    cye_path_scandir
 
 //------------------------------------------------------------------------------------
-// Dynamic Array
+//  Dynamic Array Short Names
 //------------------------------------------------------------------------------------
 #define da_fmt         cye_da_fmt
 #define da_fmt_arg     cye_da_fmt_arg
@@ -2177,14 +2595,62 @@ char *nob_win32_error_message(DWORD err) {
 #define da_free        cye_da_free
 #define da_append_many cye_da_append_many
 
+
 //------------------------------------------------------------------------------------
-// String Functions
+//  Slices Short Names
+//------------------------------------------------------------------------------------
+
+#define slice_fmt     cye_slice_fmt
+#define slice_fmt_arg cye_slice_fmt_arg
+
+#define Slice Cye_Slice
+
+#define slice_make     cye_slice_make
+#define slice_from_arr cye_slice_from_arr
+
+#define slice_empty     cye_slice_empty
+#define STR_SLICE_EMPTY CYE_STR_SLICE_EMPTY
+
+#define slice_range    cye_slice_range
+#define slice_prefix   cye_slice_prefix
+#define slice_suffix   cye_slice_suffix
+#define slice_equal    cye_slice_equal
+#define slice_contains cye_slice_contains
+#define slice_is_empty cye_slice_is_empty
+#define slice_at       cye_slice_at
+#define slice_copy     cye_slice_copy
+#define slice_index_of cye_slice_index_of
+
+
+//------------------------------------------------------------------------------------
+//  String Slice Short Names
+//------------------------------------------------------------------------------------
+
+
+#define ss_fmt     cye_ss_fmt
+#define ss_fmt_arg cye_ss_fmt_arg
+
+#define str_slice_make        cye_str_slice_make
+#define str_slice_trim        cye_str_slice_trim
+#define str_slice_to_zstr     cye_str_slice_to_zstr
+#define str_slice_strip_left  cye_str_slice_strip_left
+#define str_slice_strip_right cye_str_slice_strip_right
+#define str_slice_make_len    cye_str_slice_make_len
+#define str_slice_equal       cye_str_slice_equal
+#define str_slice_contains    cye_str_slice_contains
+#define str_slice_split_first cye_str_slice_split_first
+#define str_slice_starts_with cye_str_slice_starts_with
+#define str_slice_ends_with   cye_str_slice_ends_with
+
+//------------------------------------------------------------------------------------
+//  ZString Short Names
 //------------------------------------------------------------------------------------
 #define zstr_ends_with cye_zstr_ends_with
+#define  cye_str_ends_with
 
 
 //----------------------------------------------------------------------------------
-// Dynamic String Functions
+//  Dynamic String Short Names
 //----------------------------------------------------------------------------------
 
 #define ds_fmt     cye_ds_fmt
@@ -2202,7 +2668,7 @@ char *nob_win32_error_message(DWORD err) {
 
 
 //----------------------------------------------------------------------------------
-// Mathematics Functions
+//  Mathematics Short Names
 //----------------------------------------------------------------------------------
 #define min          cye_min
 #define max          cye_max
@@ -2214,14 +2680,14 @@ char *nob_win32_error_message(DWORD err) {
 #define float_equals cye_float_equals
 
 //------------------------------------------------------------------------------------
-// Process and File Functions
+//  Process and File Short Names
 //------------------------------------------------------------------------------------
 #define open_for_read  cye_open_for_read
 #define open_for_write cye_open_for_write
 #define file_close     cye_file_close
 
 //------------------------------------------------------------------------------------
-// Utils Functions
+//  Utils Short Names
 //------------------------------------------------------------------------------------
 #define trace_log   cye_trace_log
 #define trace_info  cye_trace_info

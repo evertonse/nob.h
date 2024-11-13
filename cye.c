@@ -4,6 +4,7 @@
 #include "cye_shared.h"
 
 const char *test_names[] = {
+    "slice",
     "path",
     "making_dirs",
     "current_dir",
@@ -26,7 +27,7 @@ bool build_and_run_test(Command *cmd, const char *test_name) {
     trace_info("bin = %s", bin_path);
     trace_info("src = %s", src_path);
 
-    cmd_append(cmd, "cc", "-Wall", "-Wextra", "-Wno-unused-parameter", "-Wswitch-enum", "-I.", "-o", bin_path, src_path);
+    cmd_append(cmd, "cc", "-Wall", "-Wextra", "-Wno-unused-parameter", "-Wswitch-enum", "-fmax-errors=3", "-I.", "-o", bin_path, src_path);
 
     if (!cmd_run_sync_and_reset(cmd)) {
         return false;

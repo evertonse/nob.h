@@ -7,9 +7,14 @@ int main(void) {
     usz chk_point = cye_temp_save();
     result = mkdir("a");
     trace_log(LOG_INFO, "Current result: %s", result?"true":"false");
+    result = remove_dir("a");
+    trace_log(LOG_INFO, "Current remove_dirs result: %s", result?"true":"false");
 
     result = mkdirs("./////1/2/3");
     trace_log(LOG_INFO, "Current result: %s", result?"true":"false");
+
+    result = remove_dir("./////1");
+    trace_log(LOG_INFO, "Current remove_dirs result: %s", result?"true":"false");
 
     result = cye_mkdir_include_parents_from_tstr(strdup("////1/2/3/4/5/"));
     trace_log(LOG_INFO, "Current result: %s", result?"true":"false");
