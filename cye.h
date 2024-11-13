@@ -420,6 +420,8 @@ typedef struct {
     const char *data;
 } Cye_String_Slice;
 
+typedef Cye_DArray(Cye_String_Slice) Cye_String_Slice_DArray;
+
 typedef struct {
     void*  (*alloc)(usz size);
     void*  (*realloc) (void *ptr, usz size);
@@ -752,6 +754,9 @@ bool cye_str_slice_equal(Cye_String_Slice a, Cye_String_Slice b);
 // Check if string slice contains substring
 bool cye_str_slice_contains(Cye_String_Slice haystack, Cye_String_Slice needle);
 
+// Split string slice by delimiter into a Dynamic Array
+Cye_String_Slice_DArray cye_str_slice_split(Cye_String_Slice s, Cye_String_Slice delim);
+
 // Split string slice at first occurrence of delimiter
 void cye_str_slice_split_first(Cye_String_Slice s, char delim, Cye_String_Slice *before, Cye_String_Slice *after);
 
@@ -760,6 +765,12 @@ bool cye_str_slice_starts_with(Cye_String_Slice s, Cye_String_Slice prefix);
 
 // Check if string slice ends with suffix
 bool cye_str_slice_ends_with(Cye_String_Slice s, Cye_String_Slice suffix);
+
+// Check if string slice ends with zero-terminated suffix
+bool cye_str_slice_ends_with_zstr(Cye_String_Slice s, ZString suffix);
+
+// Check if string slice starts with zero-terminated prefix
+bool cye_str_slice_starts_with_zstr(Cye_String_Slice s, ZString prefix);
 
 //------------------------------------------------------------------------------------
 //  ZString Functions
@@ -853,9 +864,10 @@ void cye_file_close(Cye_File_Handle fh);
 //  Utils Functions
 //------------------------------------------------------------------------------------
 void cye_trace_log(Cye_Log_Level level, const char *fmt, ...);
-#define cye_trace_info(...)  cye_trace_log(CYE_LOG_INFO, __VA_ARGS__)
-#define cye_trace_ok(...)    cye_trace_log(CYE_LOG_OKAY, __VA_ARGS__)
+#define cye_trace_info(...)  cye_trace_log(CYE_LOG_INFO,  __VA_ARGS__)
+#define cye_trace_okay(...)  cye_trace_log(CYE_LOG_OKAY,  __VA_ARGS__)
 #define cye_trace_error(...) cye_trace_log(CYE_LOG_ERROR, __VA_ARGS__)
+#define cye_trace_fatal(...) cye_trace_log(CYE_LOG_FATAL, __VA_ARGS__)
 
 
 
@@ -2078,6 +2090,32 @@ bool cye_str_slice_contains(Cye_String_Slice haystack, Cye_String_Slice needle) 
 }
 
 
+// Split string slice by delimiter into a Dynamic Array
+Cye_String_Slice_DArray cye_str_slice_split(Cye_String_Slice s, Cye_String_Slice delim) {
+    Cye_String_Slice_DArray result = {0};
+
+    char *start   = (char*)s.data;
+    char *end     = (char*)s.data + s.count;
+    char *current = (char*)s.data;
+
+    while (current <= end - delim.count) {
+        if (memcmp(current, delim.data, delim.count) == 0) {
+            cye_da_append(&result, cye_str_slice_make_len(start, current - start));
+            current += delim.count;
+            start = current;
+        } else {
+            current++;
+        }
+    }
+
+    // Add the last part
+    if (start < end) {
+        cye_da_append(&result, cye_str_slice_make_len(start, end - start));
+    }
+
+    return result;
+}
+
 // Split string slice at first occurrence of delimiter
 void cye_str_slice_split_first(Cye_String_Slice s, char delim, Cye_String_Slice *before, Cye_String_Slice *after) {
     for (usz i = 0; i < s.count; i++) {
@@ -2101,6 +2139,20 @@ bool cye_str_slice_starts_with(Cye_String_Slice s, Cye_String_Slice prefix) {
 bool cye_str_slice_ends_with(Cye_String_Slice s, Cye_String_Slice suffix) {
     if (suffix.count > s.count) return false;
     return memcmp(s.data + s.count - suffix.count, suffix.data, suffix.count) == 0;
+}
+
+// Check if string slice starts with zero-terminated prefix
+bool cye_str_slice_starts_with_zstr(Cye_String_Slice s, ZString prefix) {
+    usz prefix_len = strlen(prefix);
+    if (prefix_len > s.count) return false;
+    return memcmp(s.data, prefix, prefix_len) == 0;
+}
+
+// Check if string slice ends with zero-terminated suffix
+bool cye_str_slice_ends_with_zstr(Cye_String_Slice s, ZString suffix) {
+    usz suffix_len = strlen(suffix);
+    if (suffix_len > s.count) return false;
+    return memcmp(s.data + s.count - suffix_len, suffix, suffix_len) == 0;
 }
 
 //------------------------------------------------------------------------------------
@@ -2132,7 +2184,6 @@ bool cye_zstr_starts_with(ZString src, ZString prefix) {
 
     return memcmp(src, prefix, prefix_len) == 0;
 }
-
 
 //----------------------------------------------------------------------------------
 //  Dynamic String Implementation
@@ -2450,18 +2501,19 @@ char *nob_win32_error_message(DWORD err) {
 #define LOG_FATAL   CYE_LOG_FATAL
 #define LOG_NONE    CYE_LOG_NONE
 
-#define Log_Level        Cye_Log_Level
-#define DArray           Cye_DArray
-#define Path_DArray      Cye_Path_DArray
-#define File_Type        Cye_File_Type
-#define DString          Cye_DString
-#define Process          Cye_Process
-#define File_Handle      Cye_File_Handle
-#define Process_DArray   Cye_Process_DArray
-#define Command          Cye_Command
-#define Command_Redirect Cye_Command_Redirect
-#define String_Slice     Cye_String_Slice
-#define Context          Cye_Context
+#define Log_Level           Cye_Log_Level
+#define DArray              Cye_DArray
+#define Path_DArray         Cye_Path_DArray
+#define File_Type           Cye_File_Type
+#define DString             Cye_DString
+#define Process             Cye_Process
+#define File_Handle         Cye_File_Handle
+#define Process_DArray      Cye_Process_DArray
+#define Command             Cye_Command
+#define Command_Redirect    Cye_Command_Redirect
+#define String_Slice        Cye_String_Slice
+#define String_Slice_DArray Cye_String_Slice_DArray
+#define Context             Cye_Context
 
 //------------------------------------------------------------------------------------
 //  Global Variables Short Names
@@ -2628,18 +2680,20 @@ char *nob_win32_error_message(DWORD err) {
 #define ss_fmt     cye_ss_fmt
 #define ss_fmt_arg cye_ss_fmt_arg
 
-#define str_slice_make        cye_str_slice_make
-#define str_slice_trim        cye_str_slice_trim
-#define str_slice_to_zstr     cye_str_slice_to_zstr
-#define str_slice_strip_left  cye_str_slice_strip_left
-#define str_slice_strip_right cye_str_slice_strip_right
-#define str_slice_make_len    cye_str_slice_make_len
-#define str_slice_equal       cye_str_slice_equal
-#define str_slice_contains    cye_str_slice_contains
-#define str_slice_split_first cye_str_slice_split_first
-#define str_slice_starts_with cye_str_slice_starts_with
-#define str_slice_ends_with   cye_str_slice_ends_with
-
+#define str_slice_make             cye_str_slice_make
+#define str_slice_trim             cye_str_slice_trim
+#define str_slice_to_zstr          cye_str_slice_to_zstr
+#define str_slice_strip_left       cye_str_slice_strip_left
+#define str_slice_strip_right      cye_str_slice_strip_right
+#define str_slice_make_len         cye_str_slice_make_len
+#define str_slice_equal            cye_str_slice_equal
+#define str_slice_contains         cye_str_slice_contains
+#define str_slice_split            cye_str_slice_split
+#define str_slice_split_first      cye_str_slice_split_first
+#define str_slice_starts_with      cye_str_slice_starts_with
+#define str_slice_ends_with        cye_str_slice_ends_with
+#define str_slice_ends_with_zstr   cye_str_slice_ends_with_zstr
+#define str_slice_starts_with_zstr cye_str_slice_starts_with_zstr
 //------------------------------------------------------------------------------------
 //  ZString Short Names
 //------------------------------------------------------------------------------------
@@ -2687,9 +2741,12 @@ char *nob_win32_error_message(DWORD err) {
 //------------------------------------------------------------------------------------
 //  Utils Short Names
 //------------------------------------------------------------------------------------
+
 #define trace_log   cye_trace_log
 #define trace_info  cye_trace_info
+#define trace_okay  cye_trace_okay
 #define trace_error cye_trace_error
+#define trace_fatal cye_trace_fatal
 
 #define cpu_architecture *cye_cpu_architecture
 

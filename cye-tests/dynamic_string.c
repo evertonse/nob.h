@@ -30,11 +30,10 @@ void test_dynamic_string(void) {
     
 
     if (chk_point == temp_save()) {
-        trace_info("Passed: %s", ds.items);
+        trace_log(LOG_OKAY, "Passed: %s", ds.items);
     } else {
         trace_error("Failed: %s", ds.items);
     }
-    exit(1);
 }
 
 int main(void) {

@@ -78,11 +78,23 @@ void example(void) {
     // Check if starts with
     String_Slice hello = str_slice_make("Hello");
     bool starts = str_slice_starts_with(trimmed, hello);  // true
+    if (starts) {
+        trace_okay("trimed="ss_fmt "does starts with ="ss_fmt, ss_fmt_arg(trimmed), ss_fmt_arg(hello));
+    } else {
+        trace_error("trimed="ss_fmt "does NOT starts with ="ss_fmt, ss_fmt_arg(trimmed), ss_fmt_arg(hello));
+    }
 
     // Compare string slices
-    String_Slice a = str_slice_make("hello");
+    
+    char arr[] = {'h', 'e', 'l', 'l', 'o'};
+    String_Slice a = slice_from_arr(arr);
     String_Slice b = str_slice_make("hello");
     bool equal = str_slice_equal(a, b);  // true
+    if (equal) {
+        trace_okay("a="ss_fmt "does equals b="ss_fmt, ss_fmt_arg(a), ss_fmt_arg(b));
+    } else {
+        trace_error("a="ss_fmt "does NOT equals b="ss_fmt, ss_fmt_arg(a), ss_fmt_arg(b));
+    }
 }
 
 #include <assert.h>
@@ -94,7 +106,7 @@ void example(void) {
 typedef DArray(String_Slice) String_Slice_Array;
 
 // New function: Split string by delimiter string, returns array of slices
-static String_Slice_Array str_slice_split(String_Slice s, String_Slice delim) {
+static String_Slice_Array str_slice_split2(String_Slice s, String_Slice delim) {
     String_Slice_Array result = {0};
     usz capacity = 8;
     result.items = malloc(sizeof(String_Slice) * capacity);
@@ -211,14 +223,20 @@ void run_tests(void) {
         char test[] = "one||two||three";
         String_Slice s = slice_make(test, strlen(test));
         String_Slice delim = slice_make("||", 2);
-        String_Slice_Array result = str_slice_split(s, delim);
+
+        context   = temp_context();
+        usz chk_point = temp_save();
+
+        String_Slice_DArray result = str_slice_split(s, delim);
 
         assert(result.count == 3);
         assert(memcmp(result.items[0].data, "one", 3) == 0);
         assert(memcmp(result.items[1].data, "two", 3) == 0);
         assert(memcmp(result.items[2].data, "three", 5) == 0);
 
-        free(result.items);
+        context = default_context();
+        temp_rewind(chk_point);
+
         trace_log(LOG_OKAY, "Split by string test passed");
     }
 
@@ -239,15 +257,46 @@ void run_tests(void) {
     }
 }
 
+#define assert_true(test_case, result)               \
+{                                                    \
+    if (result) {                                    \
+        trace_okay("[SUCCESS] %s", test_case);\
+    } else {                                         \
+        trace_error("[FAIL] %s", test_case);  \
+    }                                                \
+}
+
+#define assert_false(test_case, result) assert_true(test_case, !result)
+
+u0 another(void) {
+    String_Slice ss1 = str_slice_make("./example.exe");
+    String_Slice ss2 = str_slice_make("");
+
+    assert_true("str_slice_ends_with(ss1,  \"./example.exe\")",        str_slice_ends_with_zstr(ss1, "./example.exe"));
+    assert_true("str_slice_ends_with(ss1,  \".exe\")",                 str_slice_ends_with_zstr(ss1, ".exe"));
+    assert_true("str_slice_ends_with(ss1,  \"e\")",                    str_slice_ends_with_zstr(ss1, "e"));
+    assert_true("str_slice_ends_with(ss1,  \"\")",                     str_slice_ends_with_zstr(ss1, ""));
+    assert_true("str_slice_ends_with(ss2,  \"\")",                     str_slice_ends_with_zstr(ss2, ""));
+
+    assert_false("str_slice_ends_with(ss1, \".png\")",                 str_slice_ends_with_zstr(ss1, ".png"));
+    assert_false("str_slice_ends_with(ss1, \"/path/to/example.exe\")", str_slice_ends_with_zstr(ss1, "/path/to/example.exe"));
+    assert_false("str_slice_ends_with(ss2, \".obj\")",                 str_slice_ends_with_zstr(ss2, ".obj"));
+
+}
+
+
+
 int main(int argc, char *argv[]) {
-    int a  = ({
+    int val  = ({
         argc = 123;
         argc;
     });
-    printf("argc=%d\n", argc);
+
+    printf("val=%d\n", val);
 
     run_tests();
     example();
+    another();
     printf("All tests passed!\n");
     return 0;
 }
