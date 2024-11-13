@@ -239,7 +239,9 @@
 #define cye_unreachable(msg) do { fprintf(stderr, "%s:%d: %s UNREACHABLE: %s\n",__FILE__, __LINE__,__PRETTY_FUNCTION__,  msg); abort(); } while(0)
 #define cye_panic(msg)       do { fprintf(stderr, "%s:%d: %s PANIC: " msg "\n",__FILE__, __LINE__,__PRETTY_FUNCTION__); abort(); } while(0)
 #define cye_not_implemented(msg) assert(0 && msg "Not Implemented.")
-#define cye_shift(items, items_sz)  (assert((items_sz) > 0), (items_sz)--, *(items)++)
+#define cye_shift(items, items_sz)  (assert((items_sz) > 0 && "Shift WAY TOO MUCH"), (items_sz)--, *(items)++)
+#define cye_file_fmt "%s:%d:%s PANIC: "
+#define cye_file_fmt_arg __FILE__, __LINE__,__PRETTY_FUNCTION__
 
 #ifdef _WIN32
 #    define CYE_END_OF_LINE "\r\n"
@@ -353,7 +355,7 @@ typedef enum {
     CYE_LOG_INFO,           // Info logging, used for program execution info
     CYE_LOG_OKAY,             // Everthying Works, a bit more important and info but less important than error
     CYE_LOG_WARNING,        // Warning logging, used on recoverable failures
-    CYE_LOG_ERROR,          // Error logging, used on unrecoverable failures
+    CYE_TRACE_ERROR,          // Error logging, used on unrecoverable failures
     CYE_LOG_FATAL,          // Fatal logging, used to abort program: exit(EXIT_FAILURE)
     CYE_LOG_NONE            // Disable logging
 } Cye_Log_Level;
@@ -432,22 +434,24 @@ typedef struct {
 
 /*..................................................................................
  .                                                                                 .
- .                                Functions                                        .
+ .                               Declarations                                      .
  .                                                                                 .
  ...................................................................................
 */
 
 //------------------------------------------------------------------------------------
-//  Process and File Functions
+//  Process and File Declarations
 //------------------------------------------------------------------------------------
-Cye_File_Handle cye_open_for_write(const char *path);
-void cye_file_close(Cye_File_Handle handle);
+
+Cye_File_Handle cye_file_open_for_read(const char *path);
+Cye_File_Handle cye_file_open_for_write(const char *path);
+void cye_file_close(Cye_File_Handle fh);
 bool cye_process_wait_all(Cye_Process_DArray procs);
 bool cye_process_wait_all_and_reset(Cye_Process_DArray *procs);
 bool cye_process_wait(Cye_Process proc); // Wait until the process has finished
 
 //------------------------------------------------------------------------------------
-//  Commands Functions
+//  Commands Declarations
 //------------------------------------------------------------------------------------
 #define cye_cmd_append(cmd, ...)              \
     cye_da_append_many(                       \
@@ -458,7 +462,7 @@ bool cye_process_wait(Cye_Process proc); // Wait until the process has finished
     cye_da_append_many(cmd, (other_cmd)->items, (other_cmd)->count)
 
 // Free all the memory allocated by command arguments
-#define cye_cmd_free(cmd) CYE_FREE(cmd.items)
+#define cye_cmd_free(cmd) cye_da_free(cmd)
 
 
 // Render a string representation of a command into a dynamic string.
@@ -512,7 +516,7 @@ void cye__rebuild_ourselves(ZString source_path, int argc, ZString *argv);
 
 
 //------------------------------------------------------------------------------------
-//  Storage Functions
+//  Storage Declarations
 //------------------------------------------------------------------------------------
 
 Cye_Context cye_temp_context(void);
@@ -531,17 +535,27 @@ usz  cye_temp_save(void);
 void cye_temp_rewind(usz checkpoint);
 
 //------------------------------------------------------------------------------------
-//  Path Functions
+//  Path Declarations
 //------------------------------------------------------------------------------------
 
-bool cye_mkdir_if_not_exists(const char *path);
+bool cye_make_dir_if_not_exists(const char *path);
 bool cye_copy_file(const char *src_path, const char *dst_path);
-bool cye_copy_dir_recursively(const char *src_path, const char *dst_path);
+bool cye_copy_dir(const char *src_path, const char *dst_path);
 bool cye_read_entire_dir(const char *parent, Cye_Path_DArray *children);
+
+// Write bytes to a file, creating if it doesnt exist
 bool cye_write_entire_file(const char *path, const void *data, usz size);
+
+// Read contents of file into a Dynamic String
+bool cye_read_entire_file(const char *path, Cye_DString *ds);
+
+// Get File Type
 Cye_File_Type cye_path_file_type(const char *path);
 
+// Normalize Path ex: ///oi/hello/././.txt -> /oi/hello/.txt
 char* cye_path_temp_normalize(ZString path);
+
+// Create from path parts and normalize
 char* cye_path_create_from_array(ZString paths[], usz paths_count);
 
 #define cye_path_create(...)                                            \
@@ -549,8 +563,19 @@ char* cye_path_create_from_array(ZString paths[], usz paths_count);
         ((const char*[]){__VA_ARGS__}),                                 \
         (sizeof((const char *[]){__VA_ARGS__}) / sizeof(const char *)))
 
-ZString cye_base_name(const char *path);
-ZString cye_exists(const char *path); // TODO
+#define cye_path_temp_create(...)                                        \
+({                                                                       \
+    Cye_Context before = cye_context;                                    \
+    cye_context = cye_temp_context();                                    \
+    TString path = cye_path_create_from_array(                           \
+        ((const char*[]){__VA_ARGS__}),                                  \
+        (sizeof((const char *[]){__VA_ARGS__}) / sizeof(const char *))); \
+    cye_context = before;                                                \
+    path;                                                                \
+})
+
+
+ZString cye_path_base_name(const char *path);
 ZString cye_expand_user(ZString path);  // Expand ~ and ~user
 ZString cye_expand_vars(ZString path);  // Expand environment variables
 
@@ -563,53 +588,56 @@ int  cye_needs_rebuild(const char *output_path, const char **input_paths, usz in
 
 #define cye_needs_rebuild1(out, in) cye_needs_rebuild_spread(out, in)
 
-TString cye_path_temp_cwd(void);
-bool    cye_path_set_cwd(const char *path);
+
+
+
+TString cye_path_temp_cwd(void);                                  // Get current working directory
+bool cye_path_set_cwd(const char *path);                          // Change current working directory
 
 bool cye_file_exists(const char *file_path);
-bool cye_is_absolute(ZString path);                           // Check if path  is absolute
-bool cye_is_relative(ZString path);                           // Check if path  is relative
-bool cye_is_file(ZString path);                               // Check if path  is regular  file
-bool cye_is_dir(ZString path);                                // Check if path  is directory
-bool cye_is_link(ZString path);                               // Check if path  is symbolic link
-bool cye_is_mount(ZString path);                              // Check if path  is mount    point
-bool cye_is_same_path(ZString path1, ZString path2);          // Check if paths reference same file (one can be absolute and another relative or on be a hard link)
+bool cye_is_absolute(ZString path);                               // Check if path  is absolute
+bool cye_is_relative(ZString path);                               // Check if path  is relative
+bool cye_is_file(ZString path);                                   // Check if path  is regular  file
+bool cye_is_dir(ZString path);                                    // Check if path  is directory
+bool cye_is_link(ZString path);                                   // Check if path  is symbolic link
+bool cye_is_mount(ZString path);                                  // Check if path  is mount    point
+bool cye_is_same_path(ZString path1, ZString path2);              // Check if paths reference same file (one can be absolute and another relative or on be a hard link)
 
-Cye_DString cye_path_join(ZString path, ZString* paths);             // Join paths intelligently
-usz         cye_path_size(ZString path);                             // Size  in bytes
-ZString     cye_path_real(ZString path);                             // Returns real path (resolve symlinks)
-ZString     cye_path_absolute(ZString path);                         // Returns absolute path
-ZString     cye_path_relative(ZString from, ZString target);         // Returns relative path
+Cye_DString cye_path_join(ZString path, ZString* paths);          // Join paths intelligently
 
-ZString cye_path_home(void);           //  Return home
-ZString cye_path_cwd(void);            //  Return current directory
-ZString cye_path_parent(ZString path); //  Returns parent directory
-ZString cye_path_owner(ZString path);  //  Returns parent directory
-ZString cye_path_stem(ZString path);   //  Return path without extension
-ZString cye_path_ext(ZString path);    //  Returns only the extension
-ZString cye_path_touch(ZString path);  //  Creates an empty file if not already exists
+usz cye_path_size(ZString path);                                  // Size  in bytes
 
-bool cye_dir_change(ZString path);                          // Change current working directory
-#define cye_mkdir cye_mkdir_if_not_exists                   // Create directory
-bool cye_mkdir_include_parents(ZString path);               // Create directories including parents as needed
-bool cye_mkdir_include_parents_from_tstr(TString path);     // Create directories recursively
-#define cye_mkdirs cye_mkdir_include_parents
+ZString cye_path_real(ZString path);                              // Returns real path (resolve symlinks)
+ZString cye_path_absolute(ZString path);                          // Returns absolute path
+ZString cye_path_relative(ZString from, ZString target);          // Returns relative path
 
-bool cye_remove_file(ZString path);                         // Remove file
-bool cye_remove_dir(ZString path);                          // Remove directory
-bool cye_remove_dirs(ZString path);                         // Remove directories recursively
-bool cye_path_move(ZString src, ZString dst);               // Move file or directory
-bool cye_path_rename(ZString src, ZString dst);             // Rename file or directory
-bool cye_path_renames(ZString old_path, ZString new_path);  // Recursive directory or file renaming
-bool cye_path_replace(ZString src, ZString dst);            // Rename file or directory, replacing if exists
-                                                            // Paths valid for one func call much like TextFormat from Raylib
-Cye_Path_DArray cye_path_scandir(ZString path);             // Iterator of directory entries
+ZString cye_path_home(void);                                      //  Return home
+ZString cye_path_cwd(void);                                       //  Return current directory
+ZString cye_path_parent(ZString path);                            //  Returns parent directory
+ZString cye_path_owner(ZString path);                             //  Returns parent directory
+ZString cye_path_stem(ZString path);                              //  Return path without extension
+ZString cye_path_ext(ZString path);                               //  Returns only the extension
+ZString cye_path_touch(ZString path);                             //  Creates an empty file if not already exists
 
-// bool cye_path_walk(funct)                                //  Generate directory tree
+#define cye_make_dir cye_make_dir_if_not_exists                   // Create directory
+bool cye_make_dir_include_parents(ZString path);                  // Create directories including parents as needed
+bool cye_make_dir_include_parents_from_tstr(TString path);        // Create directories recursively
+
+bool cye_remove_file(ZString path);                               // Remove file
+bool cye_remove_dir(ZString path);                                // Remove directory
+bool cye_remove_dirs(ZString path);                               // Remove directories recursively
+bool cye_path_move(ZString src, ZString dst);                     // Move file or directory
+bool cye_path_rename(ZString src, ZString dst);                   // Rename file or directory
+bool cye_path_renames(ZString old_path, ZString new_path);        // Recursive directory or file renaming
+bool cye_path_replace(ZString src, ZString dst);                  // Rename file or directory, replacing if exists
+                                                                  // Paths valid for one func call much like TextFormat from Raylib
+Cye_Path_DArray cye_path_scandir(ZString path);                   // Iterator of directory entries
+
+// bool cye_path_walk                                              // Generate directory tree
 
 
 //------------------------------------------------------------------------------------
-//  Dynamic Array
+//  Dynamic Array Declarations
 //------------------------------------------------------------------------------------
 
 #define cye_da_fmt         "{.count=%zu, .capacity=%zu}"
@@ -652,7 +680,7 @@ Cye_Path_DArray cye_path_scandir(ZString path);             // Iterator of direc
 
 
 //------------------------------------------------------------------------------------
-//  Slices Functions
+//  Slices Declarations
 //------------------------------------------------------------------------------------
 
 
@@ -724,7 +752,7 @@ Cye_Path_DArray cye_path_scandir(ZString path);             // Iterator of direc
 })
 
 //------------------------------------------------------------------------------------
-//  String Slice Functions
+//  String Slice Declarations
 //------------------------------------------------------------------------------------
 
 #define cye_ss_fmt "%.*s"
@@ -749,7 +777,7 @@ Cye_String_Slice cye_str_slice_strip_right(Cye_String_Slice s);
 Cye_String_Slice cye_str_slice_make_len(const char *str, usz len);
 
 // Compare two string slices
-bool cye_str_slice_equal(Cye_String_Slice a, Cye_String_Slice b);
+bool cye_str_slice_equals(Cye_String_Slice a, Cye_String_Slice b);
 
 // Check if string slice contains substring
 bool cye_str_slice_contains(Cye_String_Slice haystack, Cye_String_Slice needle);
@@ -773,7 +801,7 @@ bool cye_str_slice_ends_with_zstr(Cye_String_Slice s, ZString suffix);
 bool cye_str_slice_starts_with_zstr(Cye_String_Slice s, ZString prefix);
 
 //------------------------------------------------------------------------------------
-//  ZString Functions
+//  ZString Declarations
 //------------------------------------------------------------------------------------
 
 bool cye_zstr_ends_with(ZString src, ZString ending);
@@ -783,7 +811,7 @@ bool cye_zstr_starts_with(ZString src, ZString prefix);
 
 
 //----------------------------------------------------------------------------------
-//  Dynamic String Functions
+//  Dynamic String Declarations
 //----------------------------------------------------------------------------------
 
 #define cye_ds_fmt "{.items=%s, .count=%zu, .capacity=%zu}"
@@ -818,14 +846,14 @@ bool cye_zstr_starts_with(ZString src, ZString prefix);
 #define cye_ds_write_zero(ds) cye_ds_write_char(ds, '\0')
 
 // Free the memory allocated by the Dynamic String
-#define cye_ds_free(ds) cye_context.free((ds).items)
+#define cye_ds_free(ds) cye_da_free(ds)
 
 // Formated Print onto the Dynamic String
 void cye_ds_printf(Cye_DString *ds, ZString fmt, ...);
 
 
 //----------------------------------------------------------------------------------
-//  Mathematics Functions
+//  Mathematics Declarations
 //----------------------------------------------------------------------------------
 #ifndef cye_max
 #   define cye_max(value1, value2) ((value1) > (value2)) ? (value1) : (value2);
@@ -853,21 +881,19 @@ f32 cye_wrap(f32 value, f32 min, f32 max);
 // Check whether two given f32s are almost equal
 int cye_float_equals(f32 x, f32 y);
 
-//------------------------------------------------------------------------------------
-//  Process and File Functions
-//------------------------------------------------------------------------------------
-Cye_File_Handle cye_open_for_read(const char *path);
-Cye_File_Handle cye_open_for_write(const char *path);
-void cye_file_close(Cye_File_Handle fh);
 
 //------------------------------------------------------------------------------------
-//  Utils Functions
+//  Utils Declarations
 //------------------------------------------------------------------------------------
 void cye_trace_log(Cye_Log_Level level, const char *fmt, ...);
-#define cye_trace_info(...)  cye_trace_log(CYE_LOG_INFO,  __VA_ARGS__)
-#define cye_trace_okay(...)  cye_trace_log(CYE_LOG_OKAY,  __VA_ARGS__)
-#define cye_trace_error(...) cye_trace_log(CYE_LOG_ERROR, __VA_ARGS__)
-#define cye_trace_fatal(...) cye_trace_log(CYE_LOG_FATAL, __VA_ARGS__)
+#define cye_trace_info(...)  cye_trace_log(CYE_LOG_INFO,    __VA_ARGS__)
+#define cye_trace_okay(...)  cye_trace_log(CYE_LOG_OKAY,    __VA_ARGS__)
+#define cye_trace_error(...) cye_trace_log(CYE_TRACE_ERROR,   __VA_ARGS__)
+#define cye_trace_warn(...)  cye_trace_log(CYE_LOG_WARNING, __VA_ARGS__)
+#define cye_trace_fatal(...) cye_trace_log(CYE_LOG_FATAL,   __VA_ARGS__)
+
+#define cye_return_defer(code) do { code; goto defer; } while(0)
+#define cye_result_defer(value) do { result = (value); goto defer; } while(0)
 
 
 
@@ -886,7 +912,7 @@ const char *cye_cpu_architecture(void);
 #if defined(CYE_IMPLEMENTATION)
 
 //------------------------------------------------------------------------------------
-//  Global Variables Definition
+//  Global Variables Implementation
 //------------------------------------------------------------------------------------
 
 static struct {
@@ -899,7 +925,7 @@ static Cye_Log_Level cye_threshold_log_level = CYE_LOG_INFO;
 thread_local Cye_Context cye_context = {.alloc = cye_malloc, .realloc = cye_realloc, .free = cye_free, .any=null};
 
 //------------------------------------------------------------------------------------
-//  Process and File Functions Definitions
+//  Process and File Implementation
 //------------------------------------------------------------------------------------
 
 #ifdef _WIN32
@@ -909,8 +935,7 @@ thread_local Cye_Context cye_context = {.alloc = cye_malloc, .realloc = cye_real
 #endif
 
 
-Cye_File_Handle cye_open_for_write(ZString path) {
-
+Cye_File_Handle cye_file_open_for_write(ZString path) {
 #ifndef _WIN32
     Cye_File_Handle result = open(path,
         O_WRONLY | O_CREAT | O_TRUNC,
@@ -918,7 +943,7 @@ Cye_File_Handle cye_open_for_write(ZString path) {
     );
 
     if (result < 0) {
-        cye_trace_log(CYE_LOG_ERROR, "Could not open file %s: %s", path, CYE_GET_ERROR_STRING);
+        cye_trace_log(CYE_TRACE_ERROR, "Could not open file %s: %s", path, CYE_GET_ERROR_STRING);
         return CYE_INVALID_FILE_HANDLE;
     }
     return result;
@@ -939,7 +964,7 @@ Cye_File_Handle cye_open_for_write(ZString path) {
     );
 
     if (result == INVALID_HANDLE_VALUE) {
-        cye_trace_log(CYE_LOG_ERROR, "Could not open file %s: %s", path, CYE_GET_ERROR_STRING);
+        cye_trace_log(CYE_TRACE_ERROR, "Could not open file %s: %s", path, CYE_GET_ERROR_STRING);
         return CYE_INVALID_FILE_HANDLE;
     }
 
@@ -980,21 +1005,21 @@ bool cye_process_wait(Cye_Process proc) {
     for (;;) {
         int wstatus = 0;
         if (waitpid(proc, &wstatus, 0) < 0) {
-            cye_trace_log(CYE_LOG_ERROR, "Could not wait on command (pid %d): %s", proc, CYE_GET_ERROR_STRING);
+            cye_trace_log(CYE_TRACE_ERROR, "Could not wait on command (pid %d): %s", proc, CYE_GET_ERROR_STRING);
             return false;
         }
 
         if (WIFEXITED(wstatus)) {
             int exit_status = WEXITSTATUS(wstatus);
             if (exit_status != 0) {
-                cye_trace_log(CYE_LOG_ERROR, "Command exited with exit code %d", exit_status);
+                cye_trace_log(CYE_TRACE_ERROR, "Command exited with exit code %d", exit_status);
                 return false;
             }
             break;
         }
 
         if (WIFSIGNALED(wstatus)) {
-            cye_trace_log(CYE_LOG_ERROR, "Command process was terminated by %s", strsignal(WTERMSIG(wstatus)));
+            cye_trace_log(CYE_TRACE_ERROR, "Command process was terminated by %s", strsignal(WTERMSIG(wstatus)));
             return false;
         }
     }
@@ -1006,18 +1031,18 @@ bool cye_process_wait(Cye_Process proc) {
     );
 
     if (result == WAIT_FAILED) {
-        cye_trace_log(CYE_LOG_ERROR, "Could not wait on child process: %s", nob_win32_error_message(GetLastError()));
+        cye_trace_log(CYE_TRACE_ERROR, "Could not wait on child process: %s", nob_win32_error_message(GetLastError()));
         return false;
     }
 
     DWORD exit_status;
     if (!GetExitCodeProcess(proc, &exit_status)) {
-        cye_trace_log(CYE_LOG_ERROR, "Could not get process exit code: %s", nob_win32_error_message(GetLastError()));
+        cye_trace_log(CYE_TRACE_ERROR, "Could not get process exit code: %s", nob_win32_error_message(GetLastError()));
         return false;
     }
 
     if (exit_status != 0) {
-        cye_trace_log(CYE_LOG_ERROR, "Command exited with exit code %lu", exit_status);
+        cye_trace_log(CYE_TRACE_ERROR, "Command exited with exit code %lu", exit_status);
         return false;
     }
 
@@ -1314,7 +1339,7 @@ void cye_temp_rewind(usz checkpoint) {
 //  Path Functions Implementation
 //------------------------------------------------------------------------------------
 
-bool cye_mkdir_if_not_exists(const char *path) {
+bool cye_make_dir_if_not_exists(const char *path) {
 #ifdef _WIN32
     int result = mkdir(path);
 #else
@@ -1337,17 +1362,137 @@ bool cye_copy_file(const char *src_path, const char *dst_path) {
     cye_todo("VAI TRABALHAR VAGABUNDO");
 }
 
-bool cye_copy_dir_recursively(const char *src_path,
-                                    const char *dst_path) {
-    cye_todo("VAI TRABALHAR VAGABUNDO");
+bool cye_copy_dir(const char *src_path, const char *dst_path) {
+    bool result = true;
+    Cye_Path_DArray children = {0};
+    Cye_DString src_ds = {0};
+    Cye_DString dst_ds = {0};
+    usz temp_checkpoint = cye_temp_save();
+
+    Cye_File_Type type = cye_path_file_type(src_path);
+    if (type < 0) return false;
+
+    switch (type) {
+        case CYE_FILE_TYPE_DIRECTORY: {
+            if (!cye_make_dir(dst_path)) cye_result_defer(false);
+            if (!cye_read_entire_dir(src_path, &children)) cye_result_defer(false);
+
+            for (usz i = 0; i < children.count; ++i) {
+                if (strcmp(children.items[i], ".") == 0) continue;
+                if (strcmp(children.items[i], "..") == 0) continue;
+
+                src_ds.count = 0;
+                cye_ds_write(&src_ds, src_path, "/", children.items[i]);
+                cye_ds_write_zero(&src_ds);
+
+                dst_ds.count = 0;
+                cye_ds_write(&dst_ds, dst_path);
+                cye_ds_write(&dst_ds, "/");
+                cye_ds_write(&dst_ds, children.items[i]);
+                cye_ds_write_zero(&dst_ds);
+
+                if (!cye_copy_dir(src_ds.items, dst_ds.items)) {
+                    cye_result_defer(false);
+                }
+            }
+        } break;
+
+        case CYE_FILE_TYPE_REGULAR: {
+            if (!cye_copy_file(src_path, dst_path)) {
+                cye_result_defer(false);
+            }
+        } break;
+
+        case CYE_FILE_TYPE_SYMLINK: {
+            cye_trace_warn("TODO: Copying symlinks is not supported yet");
+        } break;
+
+        case CYE_FILE_TYPE_OTHER: {
+            cye_trace_error("Unsupported type of file %s", src_path);
+            cye_result_defer(false);
+        } break;
+
+        default: cye_unreachable("nob_copy_directory_recursively");
+    }
+
+defer:
+    cye_temp_rewind(temp_checkpoint);
+    cye_da_free(src_ds);
+    cye_da_free(dst_ds);
+    cye_da_free(children);
+    return result;
 }
 
 bool cye_read_entire_dir(const char *parent, Cye_Path_DArray *children) {
     cye_todo("VAI TRABALHAR VAGABUNDO");
 }
 
+
+// TODO: Check this for windows
 bool cye_write_entire_file(const char *path, const void *data, usz size) {
-    cye_todo("VAI TRABALHAR VAGABUNDO");
+    bool result = true;
+
+    FILE *f = fopen(path, "wb");
+    if (f == NULL) {
+        cye_trace_error("Could not open file %s for writing: %s\n", path, strerror(errno));
+        cye_result_defer(false);
+    }
+
+    //           len
+    //           v
+    // aaaaaaaaaa
+    //     ^
+    //     data
+
+    const char *buf = data;
+    while (size > 0) {
+        size_t n = fwrite(buf, 1, size, f);
+        if (ferror(f)) {
+            cye_trace_error("Could not write into file %s: %s\n", path, strerror(errno));
+            cye_result_defer(false);
+        }
+        size -= n;
+        buf  += n;
+    }
+
+defer:
+    if (f) fclose(f);
+    return result;
+}
+
+// TODO: Check this for windows
+bool cye_read_entire_file(const char *path, Cye_DString *ds) {
+    bool result = true;
+
+    FILE *f = fopen(path, "rb");
+    if (f == NULL)                 cye_result_defer(false);
+    if (fseek(f, 0, SEEK_END) < 0) cye_result_defer(false);
+    long m = ftell(f);
+    if (m < 0)                     cye_result_defer(false);
+    if (fseek(f, 0, SEEK_SET) < 0) cye_result_defer(false);
+
+    usz new_count = ds->count + m;
+    if (new_count > ds->capacity) {
+        ds->items = cye_context.realloc(ds->items, new_count);
+        assert(ds->items != NULL && "Please, you'll need to acquire more random access memory ");
+        ds->capacity = new_count;
+    }
+
+    fread(ds->items + ds->count, m, 1, f);
+    // If no error has occurred on stream, ferror return 0
+    int error_value = ferror(f);
+    if (error_value != 0) {
+        cye_trace_error("Could not read file %s: ferror error value is %d", path, error_value);
+        result = false;
+        goto close;
+    }
+    ds->count = new_count;
+
+defer:
+    if (!result) cye_trace_error("Could not read file %s: %s", path, strerror(errno));
+close:
+    if (f) fclose(f);
+    return result;
 }
 
 Cye_File_Type cye_path_file_type(const char *path) {
@@ -1483,11 +1628,19 @@ char* cye_path_create_from_array(ZString paths[], usz paths_count) {
     return ds.items;
 }
 
-ZString cye_base_name(const char *path) { cye_todo("VAI TRABALHAR VAGABUNDO"); }
-
-ZString cye_exists(const char *path) {
-    cye_todo("VAI TRABALHAR VAGABUNDO");
-}  // TODO
+ZString cye_path_base_name(ZString path) {
+#ifndef _WIN32
+    ZString p = strrchr(path, '/');
+    return p ? p + 1 : path;
+#else
+    ZString p1 = strrchr(path, '/');
+    ZString p2 = strrchr(path, '\\');
+    ZString p =
+        (p1 > p2) ? p1
+                  : p2;  // NULL is ignored if the other search is successful
+    return p ? p + 1 : path;
+#endif  // _WIN32
+}
 
 // Expand ~ and ~user
 ZString cye_expand_user(ZString path) {
@@ -1506,7 +1659,7 @@ int cye_needs_rebuild(const char *output_path, const char **input_paths, usz inp
     if (stat(output_path, &statbuf) < 0) {
         // NOTE: if output does not exist it 100% must be rebuilt
         if (errno == ENOENT) return 1;
-        cye_trace_log(CYE_LOG_ERROR, "could not stat %s: %s", output_path, CYE_GET_ERROR_STRING);
+        cye_trace_log(CYE_TRACE_ERROR, "could not stat %s: %s", output_path, CYE_GET_ERROR_STRING);
         return -1;
     }
     int output_path_time = statbuf.st_mtime;
@@ -1515,7 +1668,7 @@ int cye_needs_rebuild(const char *output_path, const char **input_paths, usz inp
         const char *input_path = input_paths[i];
         if (stat(input_path, &statbuf) < 0) {
             // NOTE: non-existing input is an error cause it is needed for building in the first place
-            cye_trace_log(CYE_LOG_ERROR, "could not stat %s: %s", input_path, CYE_GET_ERROR_STRING);
+            cye_trace_log(CYE_TRACE_ERROR, "could not stat %s: %s", input_path, CYE_GET_ERROR_STRING);
             return -1;
         }
         int input_path_time = statbuf.st_mtime;
@@ -1531,14 +1684,14 @@ int cye_needs_rebuild(const char *output_path, const char **input_paths, usz inp
     if (output_path_fd == INVALID_HANDLE_VALUE) {
         // NOTE: if output does not exist it 100% must be rebuilt
         if (GetLastError() == ERROR_FILE_NOT_FOUND) return 1;
-        cye_trace_log(CYE_LOG_ERROR, "Could not open file %s: %s", output_path, nob_win32_error_message(GetLastError()));
+        cye_trace_log(CYE_TRACE_ERROR, "Could not open file %s: %s", output_path, nob_win32_error_message(GetLastError()));
         return -1;
     }
     FILETIME output_path_time;
     bSuccess = GetFileTime(output_path_fd, NULL, NULL, &output_path_time);
     CloseHandle(output_path_fd);
     if (!bSuccess) {
-        cye_trace_log(CYE_LOG_ERROR, "Could not get time of %s: %s", output_path, nob_win32_error_message(GetLastError()));
+        cye_trace_log(CYE_TRACE_ERROR, "Could not get time of %s: %s", output_path, nob_win32_error_message(GetLastError()));
         return -1;
     }
 
@@ -1547,14 +1700,14 @@ int cye_needs_rebuild(const char *output_path, const char **input_paths, usz inp
         HANDLE input_path_fd = CreateFile(input_path, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_READONLY, NULL);
         if (input_path_fd == INVALID_HANDLE_VALUE) {
             // NOTE: non-existing input is an error cause it is needed for building in the first place
-            cye_trace_log(CYE_LOG_ERROR, "Could not open file %s: %s", input_path, nob_win32_error_message(GetLastError()));
+            cye_trace_log(CYE_TRACE_ERROR, "Could not open file %s: %s", input_path, nob_win32_error_message(GetLastError()));
             return -1;
         }
         FILETIME input_path_time;
         bSuccess = GetFileTime(input_path_fd, NULL, NULL, &input_path_time);
         CloseHandle(input_path_fd);
         if (!bSuccess) {
-            cye_trace_log(CYE_LOG_ERROR, "Could not get time of %s: %s", input_path, nob_win32_error_message(GetLastError()));
+            cye_trace_log(CYE_TRACE_ERROR, "Could not get time of %s: %s", input_path, nob_win32_error_message(GetLastError()));
             return -1;
         }
 
@@ -1717,12 +1870,7 @@ ZString cye_path_touch(ZString path) {
     cye_todo("New Functions to Work on");
 }
 
-// Change current working directory
-bool cye_dir_change(ZString path) {
-    cye_todo("New Functions to Work on");
-}
-
-bool cye_mkdir_include_parents_from_tstr(TString path) {
+bool cye_make_dir_include_parents_from_tstr(TString path) {
     if (path == NULL || *path == '\0') {
         return false;
     }
@@ -1749,11 +1897,11 @@ bool cye_mkdir_include_parents_from_tstr(TString path) {
         for (; *p; p++) {
             if (*p == '/' || *p == '\\') {
                 *p = '\0';
-                created |= cye_mkdir(path);
+                created |= cye_make_dir(path);
                 *p = '\\';
             }
         }
-        created |= cye_mkdir(path);
+        created |= cye_make_dir(path);
     }
 #endif
 
@@ -1761,11 +1909,11 @@ bool cye_mkdir_include_parents_from_tstr(TString path) {
     for (char *p = path + 1; *p; p++) {
         if (*p == '/' || *p == '\\') {
             *p = '\0';
-            created |= cye_mkdir(path);
+            created |= cye_make_dir(path);
             *p = '/';
         }
     }
-    created |= cye_mkdir(path);
+    created |= cye_make_dir(path);
 
     cye_threshold_log_level = CYE_LOG_INFO;
     if (!created) {
@@ -1778,13 +1926,13 @@ bool cye_mkdir_include_parents_from_tstr(TString path) {
 }
 
 // Create directories recursively
-bool cye_mkdir_include_parents(ZString path) {
+bool cye_make_dir_include_parents(ZString path) {
     bool created  = false;
     usz chk_point = cye_temp_save();
     cye_context   = cye_temp_context();
 
     TString tpath = cye_path_create(path);
-    created = cye_mkdir_include_parents_from_tstr(tpath);
+    created = cye_make_dir_include_parents_from_tstr(tpath);
 
     cye_context  = cye_default_context();
     cye_temp_rewind(chk_point);
@@ -1797,9 +1945,9 @@ bool cye_remove_file(ZString path) {
         cye_trace_info("file `%s` does not exist", path);
         return true;
     }
-    
+
     Cye_File_Type type = cye_path_file_type(path);
-    
+
     if (type != CYE_FILE_TYPE_REGULAR) {
         cye_trace_error("`%s` exists but is not a regular file", path);
         return false;
@@ -1821,7 +1969,7 @@ bool cye_remove_file(ZString path) {
         cye_trace_error("could not remove file `%s`: %s", path, strerror(errno));
         return false;
     }
-    
+
     cye_trace_info("removed file `%s`", path);
     return true;
 
@@ -1832,7 +1980,7 @@ bool cye_remove_file(ZString path) {
 static void path_join(char *dest, const char *dir, const char *file) {
     size_t dir_len = strlen(dir);
     strcpy(dest, dir);
-    
+
     #ifdef _WIN32
         if (dir_len > 0 && dir[dir_len - 1] != '\\') {
             strcat(dest, "\\");
@@ -1842,7 +1990,7 @@ static void path_join(char *dest, const char *dir, const char *file) {
             strcat(dest, "/");
         }
     #endif
-    
+
     strcat(dest, file);
 }
 
@@ -1850,7 +1998,7 @@ static void path_join(char *dest, const char *dir, const char *file) {
 bool cye_remove_dir(const char *path) {
     char full_path[PATH_MAX];
     bool success = true;
-    
+
 #ifndef _WIN32
     DIR *dir = opendir(path);
     if (!dir) {
@@ -1861,7 +2009,7 @@ bool cye_remove_dir(const char *path) {
         cye_trace_error("could not open directory `%s`: %s", path, strerror(errno));
         return false;
     }
-    
+
     struct dirent *entry;
     while ((entry = readdir(dir))) {
         // Skip "." and ".." directories
@@ -1869,16 +2017,16 @@ bool cye_remove_dir(const char *path) {
             strcmp(entry->d_name, "..") == 0) {
             continue;
         }
-        
+
         path_join(full_path, path, entry->d_name);
-        
+
         struct stat statbuf;
         if (stat(full_path, &statbuf) != 0) {
             cye_trace_error("could not stat `%s`: %s", full_path, strerror(errno));
             success = false;
             continue;
         }
-        
+
         if (S_ISDIR(statbuf.st_mode)) {
             // Recursively remove subdirectory
             if (!cye_remove_dir(full_path)) {
@@ -1894,9 +2042,9 @@ bool cye_remove_dir(const char *path) {
             }
         }
     }
-    
+
     closedir(dir);
-    
+
     // Remove the empty directory
     if (success && rmdir(path) != 0) {
         cye_trace_error("could not remove directory `%s`: %s", path, strerror(errno));
@@ -1907,10 +2055,10 @@ bool cye_remove_dir(const char *path) {
 #else
     WIN32_FIND_DATA find_data;
     char search_path[PATH_MAX];
-    
+
     // Prepare search path
     snprintf(search_path, sizeof(search_path), "%s\\*", path);
-    
+
     HANDLE find_handle = FindFirstFile(search_path, &find_data);
     if (find_handle == INVALID_HANDLE_VALUE) {
         if (GetLastError() == ERROR_FILE_NOT_FOUND) {
@@ -1920,16 +2068,16 @@ bool cye_remove_dir(const char *path) {
         cye_trace_error("could not open directory `%s`: %lu", path, GetLastError());
         return false;
     }
-    
+
     do {
         // Skip "." and ".." directories
-        if (strcmp(find_data.cFileName, ".") == 0 || 
+        if (strcmp(find_data.cFileName, ".") == 0 ||
             strcmp(find_data.cFileName, "..") == 0) {
             continue;
         }
-        
+
         path_join(full_path, path, find_data.cFileName);
-        
+
         if (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
             // Recursively remove subdirectory
             if (!cye_remove_directory(full_path)) {
@@ -1945,9 +2093,9 @@ bool cye_remove_dir(const char *path) {
             }
         }
     } while (FindNextFile(find_handle, &find_data));
-    
+
     FindClose(find_handle);
-    
+
     // Remove the empty directory
     if (success && !RemoveDirectory(path)) {
         cye_trace_error("could not remove directory `%s`: %lu", path, GetLastError());
@@ -1955,9 +2103,9 @@ bool cye_remove_dir(const char *path) {
     } else if (success) {
         cye_trace_info("Removed directory `%s`", path);
     }
-    
+
 #endif
-    
+
     return success;
 }
 
@@ -2072,7 +2220,7 @@ Cye_String_Slice cye_str_slice_make_len(const char *str, usz len) {
 }
 
 // Compare two string slices
-bool cye_str_slice_equal(Cye_String_Slice a, Cye_String_Slice b) {
+bool cye_str_slice_equals(Cye_String_Slice a, Cye_String_Slice b) {
     if (a.count != b.count) return false;
     return memcmp(a.data, b.data, a.count) == 0;
 }
@@ -2324,7 +2472,7 @@ void cye_trace_log(Cye_Log_Level level, const char *fmt, ...) {
         case CYE_LOG_INFO:    color = ESCAPE_CODE_LOG;     reset = ESCAPE_CODE_RESET; break;
         case CYE_LOG_OKAY:    color = ESCAPE_CODE_OKGREEN; reset = ESCAPE_CODE_RESET; break;
         case CYE_LOG_WARNING: color = ESCAPE_CODE_WARNING; reset = ESCAPE_CODE_RESET; break;
-        case CYE_LOG_ERROR:   color = ESCAPE_CODE_ERROR;   reset = ESCAPE_CODE_RESET; break;
+        case CYE_TRACE_ERROR:   color = ESCAPE_CODE_ERROR;   reset = ESCAPE_CODE_RESET; break;
         case CYE_LOG_FATAL:   color = ESCAPE_CODE_ERROR;   reset = ESCAPE_CODE_RESET; bold = ESCAPE_CODE_BOLD; break;
         case CYE_LOG_ALL:     break;
         case CYE_LOG_NONE:    break;
@@ -2349,7 +2497,7 @@ void cye_trace_log(Cye_Log_Level level, const char *fmt, ...) {
         case CYE_LOG_INFO:    written = snprintf(buffer, max_len, "%sINFO%s%s:  ", color, reset, bold); break;
         case CYE_LOG_OKAY:    written = snprintf(buffer, max_len, "%sOKAY%s%s:  ", color, reset, bold); break;
         case CYE_LOG_WARNING: written = snprintf(buffer, max_len, "%sWARN%s%s:  ", color, reset, bold); break;
-        case CYE_LOG_ERROR:   written = snprintf(buffer, max_len, "%sERROR%s%s: ", color, reset, bold); break;
+        case CYE_TRACE_ERROR:   written = snprintf(buffer, max_len, "%sERROR%s%s: ", color, reset, bold); break;
         case CYE_LOG_FATAL:   written = snprintf(buffer, max_len, "%sFATAL%s%s: ", color, reset, bold); break;
         case CYE_LOG_ALL:     written = snprintf(buffer, max_len, "%sALL%s%s:   ", color, reset, bold); break;
         case CYE_LOG_NONE:    return;
@@ -2487,6 +2635,9 @@ char *nob_win32_error_message(DWORD err) {
 #define not_implemented cye_not_implemented
 #define shift           cye_shift
 
+#define file_fmt        cye_file_fmt
+#define file_fmt_arg    cye_file_fmt_arg
+
 //----------------------------------------------------------------------------------
 //  Structures Definition with Prefix Short Names
 //----------------------------------------------------------------------------------
@@ -2497,7 +2648,7 @@ char *nob_win32_error_message(DWORD err) {
 #define LOG_INFO    CYE_LOG_INFO
 #define LOG_OKAY    CYE_LOG_OKAY
 #define LOG_WARNING CYE_LOG_WARNING
-#define LOG_ERROR   CYE_LOG_ERROR
+#define LOG_ERROR   CYE_TRACE_ERROR
 #define LOG_FATAL   CYE_LOG_FATAL
 #define LOG_NONE    CYE_LOG_NONE
 
@@ -2506,8 +2657,12 @@ char *nob_win32_error_message(DWORD err) {
 #define Path_DArray         Cye_Path_DArray
 #define File_Type           Cye_File_Type
 #define DString             Cye_DString
+
+#define INVALID_PROCESS     CYE_INVALID_PROCESS
+#define INVALID_FILE_HANDLE CYE_INVALID_FILE_HANDLE
 #define Process             Cye_Process
 #define File_Handle         Cye_File_Handle
+
 #define Process_DArray      Cye_Process_DArray
 #define Command             Cye_Command
 #define Command_Redirect    Cye_Command_Redirect
@@ -2527,11 +2682,14 @@ char *nob_win32_error_message(DWORD err) {
 //------------------------------------------------------------------------------------
 //  Process and File Short Names
 //------------------------------------------------------------------------------------
-#define open_for_write             cye_open_for_write
-#define file_close                 cye_file_close
+#define file_open_for_read  cye_file_open_for_read
+#define file_open_for_write cye_file_open_for_write
+#define file_close          cye_file_close
+
 #define process_wait_all           cye_process_wait_all
 #define process_wait_all_and_reset cye_process_wait_all_and_reset
 #define process_wait               cye_process_wait
+
 
 //------------------------------------------------------------------------------------
 //  Commands Short Names
@@ -2575,20 +2733,21 @@ char *nob_win32_error_message(DWORD err) {
 //  Path Short Names
 //------------------------------------------------------------------------------------
 
-#define mkdir_if_not_exists             cye_mkdir_if_not_exists
+#define make_dir_if_not_exists          cye_make_dir_if_not_exists
 #define copy_file                       cye_copy_file
-#define copy_dir_recursively            cye_copy_dir_recursively
+#define copy_dir                        cye_copy_dir
 #define read_entire_dir                 cye_read_entire_dir
 #define write_entire_file               cye_write_entire_file
+#define read_entire_file                cye_read_entire_file
 #define path_file_type                  cye_path_file_type
 #define path_temp_normalize             cye_path_temp_normalize
 #define path_create_from_array          cye_path_create_from_array
 
 #define path_create                     cye_path_create
+#define path_temp_create                cye_path_temp_create
 
 
-#define base_name                       cye_base_name
-#define exists                          cye_exists
+#define path_base_name                  cye_path_base_name
 #define expand_user                     cye_expand_user
 #define expand_vars                     cye_expand_vars
 
@@ -2622,19 +2781,17 @@ char *nob_win32_error_message(DWORD err) {
 #define path_ext                        cye_path_ext
 #define path_touch                      cye_path_touch
 
-#define dir_change                      cye_dir_change
-#define mkdir                           cye_mkdir
-#define mkdirs                          cye_mkdirs
-#define mkdir_include_parents           cye_mkdir_include_parents
-#define mkdir_include_parents_from_tstr cye_mkdir_include_parents_from_tstr
-#define remove_file                     cye_remove_file
-#define remove_dir                      cye_remove_dir
-#define remove_dirs                     cye_remove_dirs
-#define path_move                       cye_path_move
-#define path_rename                     cye_path_rename
-#define path_renames                    cye_path_renames
-#define path_replace                    cye_path_replace
-#define path_scandir                    cye_path_scandir
+#define make_dir                           cye_make_dir
+#define make_dir_include_parents           cye_make_dir_include_parents
+#define make_dir_include_parents_from_tstr cye_make_dir_include_parents_from_tstr
+#define remove_file                        cye_remove_file
+#define remove_dir                         cye_remove_dir
+#define remove_dirs                        cye_remove_dirs
+#define path_move                          cye_path_move
+#define path_rename                        cye_path_rename
+#define path_renames                       cye_path_renames
+#define path_replace                       cye_path_replace
+#define path_scandir                       cye_path_scandir
 
 //------------------------------------------------------------------------------------
 //  Dynamic Array Short Names
@@ -2686,7 +2843,7 @@ char *nob_win32_error_message(DWORD err) {
 #define str_slice_strip_left       cye_str_slice_strip_left
 #define str_slice_strip_right      cye_str_slice_strip_right
 #define str_slice_make_len         cye_str_slice_make_len
-#define str_slice_equal            cye_str_slice_equal
+#define str_slice_equals           cye_str_slice_equals
 #define str_slice_contains         cye_str_slice_contains
 #define str_slice_split            cye_str_slice_split
 #define str_slice_split_first      cye_str_slice_split_first
@@ -2732,13 +2889,6 @@ char *nob_win32_error_message(DWORD err) {
 #define float_equals cye_float_equals
 
 //------------------------------------------------------------------------------------
-//  Process and File Short Names
-//------------------------------------------------------------------------------------
-#define open_for_read  cye_open_for_read
-#define open_for_write cye_open_for_write
-#define file_close     cye_file_close
-
-//------------------------------------------------------------------------------------
 //  Utils Short Names
 //------------------------------------------------------------------------------------
 
@@ -2746,7 +2896,11 @@ char *nob_win32_error_message(DWORD err) {
 #define trace_info  cye_trace_info
 #define trace_okay  cye_trace_okay
 #define trace_error cye_trace_error
+#define trace_warn  cye_trace_warn
 #define trace_fatal cye_trace_fatal
+
+#define return_defer cye_return_defer
+#define result_defer cye_result_defer
 
 #define cpu_architecture *cye_cpu_architecture
 

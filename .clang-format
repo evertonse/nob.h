@@ -1,6 +1,12 @@
 Language: Cpp
-BasedOnStyle: Google
+# BasedOnStyle: Google
+BasedOnStyle: LLVM
 IndentWidth: 4
 TabWidth: 4
 UseTab: Never
+AllowShortBlocksOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortIfStatementsOnASingleLine: false
+InsertBraces: true
+
 

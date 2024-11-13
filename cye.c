@@ -1,9 +1,10 @@
 
 #define CYE_IMPLEMENTATION
 #include "cye.h"
-#include "cye_shared.h"
+#include "shared.h"
 
 const char *test_names[] = {
+    "cmd_redirect",
     "slice",
     "path",
     "making_dirs",
@@ -12,7 +13,6 @@ const char *test_names[] = {
     "minimal_log_level",
     "temporary_storage",
 //     "nob_sv_end_with",
-//     "cmd_redirect",
 // #ifdef _WIN32
 //     "win32_error",
 // #endif //_WIN32
@@ -50,8 +50,8 @@ int main(int argc, const char **argv) {
     const char *command_name = "test";
     if (argc > 0) command_name = shift(argv, argc);
 
-    if (!mkdirs(BUILD_FOLDER TESTS_FOLDER)) return 1;
-    if (!mkdirs(BUILD_FOLDER TOOLS_FOLDER)) return 1;
+    if (!make_dir(BUILD_FOLDER TESTS_FOLDER)) return 1;
+    if (!make_dir(BUILD_FOLDER TOOLS_FOLDER)) return 1;
 
     if (0 == strcmp(command_name, "test")) {
         if (argc <= 0) {

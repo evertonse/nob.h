@@ -23,3 +23,5 @@ bool nob_mkdir_if_not_exists_recursive(const char *path)
 bool nob_mkdir_if_not_exists_recursive(const char *path)
 nob_fd_open_for_read
 Nob_Cmd cmd = {0};
+    unused(shift(argv, argc));
+

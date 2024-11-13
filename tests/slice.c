@@ -102,46 +102,6 @@ void example(void) {
 #include <stdio.h>
 
 
-
-typedef DArray(String_Slice) String_Slice_Array;
-
-// New function: Split string by delimiter string, returns array of slices
-static String_Slice_Array str_slice_split2(String_Slice s, String_Slice delim) {
-    String_Slice_Array result = {0};
-    usz capacity = 8;
-    result.items = malloc(sizeof(String_Slice) * capacity);
-
-    char *start   = (char*)s.data;
-    char *end     = (char*)s.data + s.count;
-    char *current = (char*)s.data;
-
-    while (current <= end - delim.count) {
-        if (memcmp(current, delim.data, delim.count) == 0) {
-            if (result.count + 1 >= capacity) {
-                capacity *= 2;
-                result.items = realloc(result.items, sizeof(String_Slice) * capacity);
-            }
-            result.items[result.count++] = str_slice_make_len(start, current - start);
-            current += delim.count;
-            start = current;
-        } else {
-            current++;
-        }
-    }
-
-    // Add the last part
-    if (start < end) {
-        if (result.count + 1 >= capacity) {
-            capacity *= 2;
-            // result.items = context.realloc(result.items, sizeof(String_Slice) * capacity);
-            result.items = realloc(result.items, sizeof(String_Slice) * capacity);
-        }
-        result.items[result.count++] = str_slice_make_len(start, end - start);
-    }
-
-    return result;
-}
-
 void print_slice(String_Slice s) {
     printf("\"");
     for (usz i = 0; i < s.count; i++) {
@@ -257,16 +217,7 @@ void run_tests(void) {
     }
 }
 
-#define assert_true(test_case, result)               \
-{                                                    \
-    if (result) {                                    \
-        trace_okay("[SUCCESS] %s", test_case);\
-    } else {                                         \
-        trace_error("[FAIL] %s", test_case);  \
-    }                                                \
-}
-
-#define assert_false(test_case, result) assert_true(test_case, !result)
+#include "cye_shared.h"
 
 u0 another(void) {
     String_Slice ss1 = str_slice_make("./example.exe");
