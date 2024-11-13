@@ -766,6 +766,7 @@ bool cye_str_slice_ends_with(Cye_String_Slice s, Cye_String_Slice suffix);
 //------------------------------------------------------------------------------------
 
 bool cye_zstr_ends_with(ZString src, ZString ending);
+bool cye_zstr_starts_with(ZString src, ZString prefix);
 
 // TODO: Add String Slices Functions as we need
 
@@ -2106,6 +2107,33 @@ bool cye_str_slice_ends_with(Cye_String_Slice s, Cye_String_Slice suffix) {
 //  ZString Implementation
 //------------------------------------------------------------------------------------
 
+bool cye_zstr_ends_with(ZString src, ZString ending) {
+    if (!src || !ending) return false;  // NULL check
+
+    usz src_len    = strlen(src);
+    usz ending_len = strlen(ending);
+
+    // If ending is longer than src, it can't be a suffix
+    if (ending_len > src_len) return false;
+
+    // Compare the end of src with ending
+    return memcmp(src + (src_len - ending_len), ending, ending_len) == 0;
+}
+
+bool cye_zstr_starts_with(ZString src, ZString prefix) {
+    if (src == NULL || prefix == NULL) return false;
+    if (!*prefix)               return true;  // Empty prefix always matches
+    if (!*src)                  return false;    // Empty string only matches empty prefix
+
+    usz prefix_len = strlen(prefix);
+    usz src_len    = strlen(src);
+
+    if (prefix_len > src_len) return false;
+
+    return memcmp(src, prefix, prefix_len) == 0;
+}
+
+
 //----------------------------------------------------------------------------------
 //  Dynamic String Implementation
 //----------------------------------------------------------------------------------
@@ -2153,36 +2181,6 @@ void cye_ds_printf(Cye_DString *ds, ZString fmt, ...) {
     va_end(args);
     cye_ds_write_buf(ds, result, n); // Don't write the null terminator
     cye_temp_rewind(chk_point);
-}
-
-//------------------------------------------------------------------------------------
-//  String Functions Implementation
-//------------------------------------------------------------------------------------
-
-bool cye_zstr_ends_with(ZString src, ZString ending) {
-    if (!src || !ending) return false;  // NULL check
-
-    usz src_len    = strlen(src);
-    usz ending_len = strlen(ending);
-
-    // If ending is longer than src, it can't be a suffix
-    if (ending_len > src_len) return false;
-
-    // Compare the end of src with ending
-    return memcmp(src + (src_len - ending_len), ending, ending_len) == 0;
-}
-
-bool cye_zstr_starts_with(ZString src, ZString prefix) {
-    if (src == NULL || prefix == NULL) return false;
-    if (!*prefix)               return true;  // Empty prefix always matches
-    if (!*src)                  return false;    // Empty string only matches empty prefix
-
-    usz prefix_len = strlen(prefix);
-    usz src_len    = strlen(src);
-
-    if (prefix_len > src_len) return false;
-
-    return memcmp(src, prefix, prefix_len) == 0;
 }
 
 //----------------------------------------------------------------------------------
@@ -2645,8 +2643,8 @@ char *nob_win32_error_message(DWORD err) {
 //------------------------------------------------------------------------------------
 //  ZString Short Names
 //------------------------------------------------------------------------------------
-#define zstr_ends_with cye_zstr_ends_with
-#define  cye_str_ends_with
+#define zstr_ends_with   cye_zstr_ends_with
+#define zstr_starts_with cye_zstr_starts_with
 
 
 //----------------------------------------------------------------------------------
