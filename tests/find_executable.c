@@ -11,6 +11,8 @@ static const char* EXECUTABLE_EXTENSIONS[] = {".exe", ".com", ".bat", ".cmd"};
 #include <errno.h>
 #endif
 
+#define ds_clear(ds) ds->count = 0
+
 // Check if a path exists and is executable
 static bool is_executable(const char* path) {
 #ifdef _WIN32
@@ -58,7 +60,7 @@ static bool find_executable(const char* name, DString* out_path) {
 #endif
     
     if (path_sep) {
-        ds_clear(out_path);
+        out_path->count = 0;
         ds_write(out_path, name);
 #ifdef _WIN32
         // On Windows, if no extension provided, try adding .exe
@@ -71,6 +73,7 @@ static bool find_executable(const char* name, DString* out_path) {
     
     // Get PATH environment variable
     const char* path_env = getenv("PATH");
+    // printf("$PATH=%s\n", path_env);
     if (!path_env) return false;
     
     DString path_copy = {0};
@@ -78,35 +81,29 @@ static bool find_executable(const char* name, DString* out_path) {
     
     // PATH separator character
 #ifdef _WIN32
-    const char PATH_SEP = ';';
+    const char PATH_ENV_SEP = ';';
 #else
-    const char PATH_SEP = ':';
+    const char PATH_ENV_SEP = ':';
 #endif
     
     // Try each directory in PATH
-    char* dir = strtok(path_copy.items, &PATH_SEP);
+    char* dir = strtok(path_copy.items, &PATH_ENV_SEP);
     while (dir) {
         ds_clear(out_path);
         ds_write(out_path, dir);
-#ifdef _WIN32
-        // Ensure path ends with backslash
-        if (out_path->count > 0 && out_path->items[out_path->count-1] != '\\') {
-            ds_write(out_path, "\\");
+        if (out_path->count > 0 && out_path->items[out_path->count-1] != PATH_SEPARATOR_CHAR) {
+            ds_write(out_path, PATH_SEPARATOR);
         }
-#else
-        // Ensure path ends with forward slash
-        if (out_path->count > 0 && out_path->items[out_path->count-1] != '/') {
-            ds_write(out_path, "/");
-        }
-#endif
+
         ds_write(out_path, name);
+        ds_write_zero(out_path);
         
 #ifdef _WIN32
         // On Windows, try with and without .exe if no extension provided
         if (!has_executable_extension(name)) {
             // Try without extension first
             if (is_executable(out_path->items)) {
-                ds_free(&path_copy);
+                ds_free(path_copy);
                 return true;
             }
             // Try with .exe
@@ -115,14 +112,14 @@ static bool find_executable(const char* name, DString* out_path) {
 #endif
         
         if (is_executable(out_path->items)) {
-            ds_free(&path_copy);
+            ds_free(path_copy);
             return true;
         }
         
-        dir = strtok(NULL, &PATH_SEP);
+        dir = strtok(NULL, &PATH_ENV_SEP);
     }
     
-    ds_free(&path_copy);
+    ds_free(path_copy);
     return false;
 }
 
@@ -147,6 +144,6 @@ int main() {
         }
     }
     
-    ds_free(&path);
+    ds_free(path);
     return 0;
 }
