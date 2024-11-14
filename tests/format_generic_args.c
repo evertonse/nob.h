@@ -28,6 +28,5 @@ int main(void) {
         trace_info("tstring=%s", tstring(ds));
         trace_info(fmt(ds), ds_fmt_arg(ds));
     }
-    exit(1);
     return 0;
 }

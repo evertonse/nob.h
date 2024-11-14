@@ -145,8 +145,13 @@
 #   endif
 #endif
 
-#ifndef static_assert // From: Odin gb.h
-#   define static_assert3(cond, msg) typedef char static_assertion_##msg[(!!(cond))*2-1]
+
+#ifndef static_assert
+#   define static_assert3(cond, msg) \
+        typedef char static_assertion_##msg[(!!(cond))*2-1]; \
+        static static_assertion_##msg static_assertion_use_##msg; \
+        unused(static_assertion_use_##msg);
+
 #   define static_assert2(cond, line) static_assert3(cond, static_assertion_at_line_##line)
 #   define static_assert1(cond, line) static_assert2(cond, line)
 #   define static_assert(cond)        static_assert1(cond, __LINE__)
