@@ -609,15 +609,12 @@ ZString cye_path_base_name(const char *path);
 ZString cye_expand_user(ZString path);  // Expand ~ and ~user
 ZString cye_expand_vars(ZString path);  // Expand environment variables
 
-int  cye_needs_rebuild(const char *output_path, const char **input_paths, usz input_paths_count);
+int  cye_needs_rebuild_from_buf(const char *output_path, const char **input_paths, usz input_paths_count);
 
-#define cye_needs_rebuild_spread(output_path, ...)    \
-    cye_needs_rebuild(                                \
-        output_path, ((const char *[]){__VA_ARGS__}), \
+#define cye_needs_rebuild(output_path, ...)                    \
+    cye_needs_rebuild_from_buf(                                \
+        output_path, ((const char *[]){__VA_ARGS__}),          \
         (sizeof((const char *[]){__VA_ARGS__}) / sizeof(const char *)))
-
-#define cye_needs_rebuild1(out, in) cye_needs_rebuild_spread(out, in)
-
 
 
 
@@ -1283,7 +1280,7 @@ void cye__rebuild_ourselves(ZString source_path, int argc, ZString *argv) {
     }
 #endif
 
-    int rebuild_is_needed = cye_needs_rebuild_spread(binary_path, source_path, __FILE__);
+    int rebuild_is_needed = cye_needs_rebuild(binary_path, source_path, __FILE__);
     if (rebuild_is_needed < 0) {
         exit(1);
     }
@@ -1767,7 +1764,7 @@ ZString cye_expand_vars(ZString path) {
     cye_todo("VAI TRABALHAR VAGABUNDO");
 }
 
-int cye_needs_rebuild(const char *output_path, const char **input_paths, usz input_paths_count) {
+int cye_needs_rebuild_from_buf(const char *output_path, const char **input_paths, usz input_paths_count) {
 #ifndef _WIN32
     struct stat statbuf = {0};
 
@@ -2878,9 +2875,8 @@ char *nob_win32_error_message(DWORD err) {
 #define expand_user                     cye_expand_user
 #define expand_vars                     cye_expand_vars
 
+#define needs_rebuild_from_buf          cye_needs_rebuild_from_buf
 #define needs_rebuild                   cye_needs_rebuild
-#define needs_rebuild_spread            cye_needs_rebuild_spread
-#define needs_rebuild1                  cye_needs_rebuild1
 
 #define path_temp_cwd                   cye_path_temp_cwd
 #define path_set_cwd                    cye_path_set_cwd
