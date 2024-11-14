@@ -23,66 +23,151 @@ bool nob_mkdir_if_not_exists_recursive(const char *path)
 bool nob_mkdir_if_not_exists_recursive(const char *path)
 nob_fd_open_for_read
 Nob_Cmd cmd = {0};
-cye_assert_handler
+3
+3
+3
+    assert(temp_data.size == 2*size_of(int)); // Because of good case of realloc
+
+    assert(temp_data.size == 2*size_of(int)); // Because of good case of realloc
+
+    assert(temp_data.size == 2*size_of(int)); // Because of good case of realloc
+
+
+
+        assert(temp_data.size == 2*size_of(int)); // Because of good case of realloc
+
+
+
+2*size_of(int)
+2
+5
+5
+5
+        assert(temp_data.size == 3*size_of(int) + 2*size_of(int)); // Because of good case of realloc
+
+        assert(temp_data.size == 3*size_of(int) + 2*size_of(int)); // Because of good case of realloc
+
+            trace_info("numbers %zuth is da.items[idx]=%d", idx,  da.items[idx]);
+
+temp_data.size
+numbers %zuth is da.items[idx]=%d
+3*size_of(int) + 2*size_of(int))
+    temp_reset();
+
+        trace_info("3*size_of(int) + 2*size_of(int))=%zu; temp_data.size=%zu", 3*size_of(int) + 2*size_of(int), temp_data.size);
+
+    
+    trace_info("temp_data.size=%zu", temp_data.size);
+
+    trace_info("temp_data.size=%zu", temp_data.size);
+
+    trace_info("temp_data.size=%zu", temp_data.size);
+
+da.capacity 
+3*size_of(int) 
+        trace_info("da.capacity + 2*size_of(int))=%zu; temp_data.size=%zu", da.capacity + 2*size_of(int), temp_data.size);
+
+// Because of good case of realloc and rewind
+"-Wno-unused-parameter"
+0
+    "cmd_redirect_pipe",
+
 #define CYE_IMPLEMENTATION
 #include "cye.h"
 #include "shared.h"
 
+typedef struct {
+    int read_fd;
+    int write_fd;
+} Pipe_Handle;
+
+#define INVALID_PIPE_HANDLE ((Pipe_Handle){-1, -1})
+
+static Pipe_Handle pipe_open(void) {
+    int pipefd[2];
+    if (pipe(pipefd) == -1) {
+        return INVALID_PIPE_HANDLE;
+    }
+    return (Pipe_Handle){
+        .read_fd = pipefd[0],
+        .write_fd = pipefd[1]
+    };
+}
+
+static void pipe_close(Pipe_Handle handle) {
+    if (handle.read_fd != -1) close(handle.read_fd);
+    if (handle.write_fd != -1) close(handle.write_fd);
+}
+
+static bool pipe_valid(Pipe_Handle handle) {
+    return handle.read_fd != -1 && handle.write_fd != -1;
+}
+
 int main(void) {
     int result = 0;
-
     Command cmd = {0};
-
-    File_Handle fh_out = INVALID_FILE_HANDLE;
-    File_Handle fh_err = INVALID_FILE_HANDLE;
-
+    Pipe_Handle pipe_out = INVALID_PIPE_HANDLE;
+    Pipe_Handle pipe_err = INVALID_PIPE_HANDLE;
     DString ds = {0};
 
     if (!build_tool(&cmd, "echo")) {
         result_defer(1);
     }
 
-    // WIN32 Poops here
-    // const char *message = "Hello, World";
     const char *message = "Hello";
 
-    const char *message_file_path =
-        path_temp_create(BUILD_FOLDER, "echo.out");
-    const char *message_file_path_err =
-        path_temp_create(BUILD_FOLDER, "echo.err");
-
-    fh_out = file_open_for_write(message_file_path);
-    if (fh_out == INVALID_FILE_HANDLE) {
+    pipe_out = pipe_open();
+    if (!pipe_valid(pipe_out)) {
         result_defer(1);
     }
 
-    fh_err = file_open_for_write(message_file_path_err);
-    if (fh_err == INVALID_FILE_HANDLE) {
+    pipe_err = pipe_open();
+    if (!pipe_valid(pipe_err)) {
         result_defer(1);
     }
 
     cmd_append(&cmd, path_temp_create(BUILD_FOLDER, TOOLS_FOLDER, "echo"),
                message);
+
+    // Create a Command_Redirect structure using pipe write ends
     Process p = cmd_run_async_redirect_and_reset(
-        &cmd, (Command_Redirect){.out = &fh_out, .err = &fh_err}
+        &cmd,
+        (Command_Redirect){
+            .out = &pipe_out.write_fd,
+            .err = &pipe_err.write_fd
+        }
     );
 
     if (p == INVALID_PROCESS) {
         result_defer(1);
     }
-    if (!process_wait(p)) {
-        result_defer(1);
+
+    // Close write ends after starting the process
+    close(pipe_out.write_fd);
+    pipe_out.write_fd = -1;
+    close(pipe_err.write_fd);
+    pipe_err.write_fd = -1;
+
+    // Read from the stderr pipe
+    char buffer[1024];
+    ssize_t bytes_read;
+    while ((bytes_read = read(pipe_err.read_fd, buffer, sizeof(buffer) - 1)) > 0) {
+        buffer[bytes_read] = '\0';
+        ds_write(&ds, buffer);
     }
 
-    if (read_entire_file(message_file_path_err, &ds)) {
-        ds_write_zero(&ds);
+    if (ds.count > 0) {
         trace_info("Got this from std err: %s", ds.items);
         ds.count = 0;
-    } else {
-        result_defer(1);
     }
 
-    if (!read_entire_file(message_file_path, &ds)) {
+    // Read from the stdout pipe
+    while ((bytes_read = read(pipe_out.read_fd, buffer, sizeof(buffer) - 1)) > 0) {
+        buffer[bytes_read] = '\0';
+        ds_write(&ds, buffer);
+    }
+
+    if (!process_wait(p)) {
         result_defer(1);
     }
 
@@ -100,1380 +185,343 @@ int main(void) {
 defer:
     cmd_free(cmd);
     ds_free(ds);
-
-    if (fh_out != INVALID_FILE_HANDLE) {
-        file_close(fh_out);
+    if (pipe_valid(pipe_out)) {
+        pipe_close(pipe_out);
     }
-
-    if (fh_err != INVALID_FILE_HANDLE) {
-        file_close(fh_err);
+    if (pipe_valid(pipe_err)) {
+        pipe_close(pipe_err);
     }
     return result;
 }
 
-#define TEMP "temp_data.size = %zu, &temp_data.buffer[0] = %p, &temp_data.buffer[temp_data.size] = %p", temp_data.size, &temp_data.buffer[0], &temp_data.buffer[temp_data.size]
-
-
-    context = temp_context();
-
-    int* a = context.alloc(size_of(int));
-
-    if (temp_data.size == size_of(int)) {
-        trace_info("Passed: " TEMP);
-    } else {
-        trace_info("Failed: " TEMP);
-    }
-
-    // Reloc on temp is the same as alloc so we lose the first
-    // pointer `a` and all that is expected from relloc goes for temporary
-    // realloc, can't use `a` anymore
-    int* b = context.realloc(a, 2*size_of(int));
-    if (temp_data.size == 3*size_of(int)) {
-        trace_info("Passed: " TEMP);
-    } else {
-        trace_info("Failed: " TEMP);
-    }
-
-    assert(a != b);
-
-    usz checkpoint = temp_save();
-    // DArray(int) da = {0};
-    struct {
-        int* items;
-        usz count;
-        usz capacity;
-    } da = {0};
-    da_append(&da, 5);
-    da_append(&da, 5);
-    da_append(&da, 5);
-    for (usz idx = 0; idx < da.count; idx += 1) {
-        trace_info("numbers %zuth is da.items[idx]=%d", idx,  da.items[idx]);
-    }
-
-    temp_rewind(checkpoint);
-    assert(temp_data.size == 3*size_of(int));
-
-    if (temp_data.size == 3*size_of(int)) {
-        trace_info("Passed: " TEMP);
-    } else {
-        trace_info("Failed: " TEMP);
-    }
-
-    cye_assert(false);
-
-    cye_assert(true);
-
-temporary_storage
-test_assertion
-test_temporary_storage
-d
-    "cmd_redirect",
-
-cast
-as
-4
-    cye_assert(false);
-
     exit(1);
 
-,
+cmd_redirect_pipe_win_and_linux
+_spread
+cye_needs_rebuild_from_buf
+cye_needs_rebuild
+cye_needs_rebuild
+_spread
+_from_buf
+_spread            
+_spread
+cye_needs_rebuild_from_buf
+cye_needs_rebuild
+cye_needs_rebuild
+_spread
+#define needs_rebuild1                  cye_needs_rebuild1
 
-    "assertion", // must be last
+#define cye_needs_rebuild1(out, in) cye_needs_rebuild_spread(out, in)
 
-    "cmd_redirect",
 
-s
-append
-buffer
+
+
+cye_needs_rebuild_from_buf
+cye_needs_rebuild
+    exit(1);
+
+INVALID_PIPE_DESCRIPTOR
+INVALID_PIPE_DESCRIPTOR
+DESCRIPTOR
+- [ ] Sand-box any extensions being used and put it behind a flag
+
+Sand-box any extensions being used and put it behind a flag
+- [ ] Make Pipe example standard from the library
+
+ake Pipe example standard from the library
+- [ ] M
+
+Cmd_Capture_Result
+Cmd_Capture_Result
+// Example usage:
+#if 0
+
+test_command_capture
+test_cmd_capture
+int main(void) {
+    int result = 0;
+    Command cmd = {0};
+    Pipe_Handle pipe_out = INVALID_PIPE_HANDLE;
+    Pipe_Handle pipe_err = INVALID_PIPE_HANDLE;
+    DString ds = {0};
+
+    if (!build_tool(&cmd, "echo")) {
+        result_defer(1);
+    }
+
+    const char *message = "Hello";
+    pipe_out = pipe_open();
+    if (!pipe_valid(pipe_out)) {
+        result_defer(1);
+    }
+
+    pipe_err = pipe_open();
+    if (!pipe_valid(pipe_err)) {
+        result_defer(1);
+    }
+
+    cmd_append(&cmd, path_temp_create(BUILD_FOLDER, TOOLS_FOLDER, "echo"),
+               message);
+
+    // Create a Command_Redirect structure using pipe write handles
+    Process p = cmd_run_async_redirect_and_reset(
+        &cmd,
+        (Command_Redirect){
+            .out = &pipe_out.write,
+            .err = &pipe_err.write
+        }
+    );
+
+    if (p == INVALID_PROCESS) {
+        result_defer(1);
+    }
+
+    // Close write ends after starting the process
+    pipe_close_descriptor(&pipe_out.write);
+    pipe_close_descriptor(&pipe_err.write);
+
+    // Read from the stderr pipe
+    char buffer[1024];
+    size_t bytes_read;
+    while (pipe_read(pipe_err.read, buffer, sizeof(buffer) - 1, &bytes_read) && bytes_read > 0) {
+        buffer[bytes_read] = '\0';
         ds_write(&ds, buffer);
+    }
 
+    if (ds.count > 0) {
+        trace_info("Got this from std err: %s", ds.items);
+        ds.count = 0;
+    }
+
+    // Read from the stdout pipe
+    while (pipe_read(pipe_out.read, buffer, sizeof(buffer) - 1, &bytes_read) && bytes_read > 0) {
+        buffer[bytes_read] = '\0';
         ds_write(&ds, buffer);
-
-        ds_append(&ds, buffer, bytes_read);
-
-l
-str_slice_equal
-str_slice_equal
-str_slice_equal
-s
-3
-shared
-result
-test_case
-test_case
-test_case
-
-
-static void cye__assert_handler(char const *prefix, char const *condition, char const *file,
-                    int line, char const *msg, ...) {
-    fprintf(stderr, "%s:%d: %s: ", file, line, prefix);
-    if (condition) {
-        fprintf(stderr, "`%s` ", condition);
     }
-    if (msg) {
-        va_list va;
-        va_start(va, msg);
-        vfprintf(stderr, msg, va);
-        va_end(va);
+
+    if (!process_wait(p)) {
+        result_defer(1);
     }
-    fprintf(stderr, "\n");
+
+    String_Slice actual_message = str_slice_make_len(ds.items, ds.count);
+    if (!str_slice_equals(str_slice_trim(actual_message), str_slice_make(message))) {
+        trace_error("Unexpected message");
+        trace_error("Expected: %s", message);
+        trace_error("Actual:   " ss_fmt, ss_fmt_arg(actual_message));
+        result_defer(1);
+    }
+
+    trace_info("OK");
+    exit(1);
+
+defer:
+    cmd_free(cmd);
+    ds_free(ds);
+    if (pipe_valid(pipe_out)) {
+        pipe_close(pipe_out);
+    }
+    if (pipe_valid(pipe_err)) {
+        pipe_close(pipe_err);
+    }
+    return result;
 }
 
-static void cye__assert_handler(char const *prefix, char const *condition, char const *file,
-                    int line, char const *msg, ...) {
-    fprintf(stderr, "%s:%d: %s: ", file, line, prefix);
-    if (condition) {
-        fprintf(stderr, "`%s` ", condition);
-    }
-    if (msg) {
-        va_list va;
-        va_start(va, msg);
-        vfprintf(stderr, msg, va);
-        va_end(va);
-    }
-    fprintf(stderr, "\n");
-}
-#ifndef cye_assert_msg
-#define cye_assert_msg(cond, msg, ...)                                          \
-  do {                                                                          \
-    if (!(cond)) {                                                              \
-      cye_assert_handler("Assertion Failure", #cond, __FILE__,                  \
-                        (long int) __LINE__, msg, ##__VA_ARGS__);                \
-      DEBUG_TRAP();                                                             \
-    }                                                                           \
-  } while (0)
 #endif
 
-#ifndef cye_assert
-#define cye_assert(cond) cye_assert_msg(cond, NULL)
-#endif
-
-
-
-// Consider using logging instead ? Maybe not
-#define cye_todo(msg)        do { fprintf(stderr, "%s:%d: %s TODO: %s\n",       __FILE__, __LINE__,__PRETTY_FUNCTION__,  msg); abort(); } while(0)
-#define cye_unreachable(msg) do { fprintf(stderr, "%s:%d: %s UNREACHABLE: %s\n",__FILE__, __LINE__,__PRETTY_FUNCTION__,  msg); abort(); } while(0)
-#define cye_panic(msg)       do { fprintf(stderr, "%s:%d: %s PANIC: " msg "\n",__FILE__, __LINE__,__PRETTY_FUNCTION__); abort(); } while(0)
-#define cye_not_implemented(msg) assert(0 && msg "Not Implemented.")
-#define cye_shift(items, items_sz)  (assert((items_sz) > 0 && "Shift WAY TOO MUCH"), (items_sz)--, *(items)++)
-
-static void cye__assert_handler(char const *prefix, char const *condition, char const *file,
-                    int line, char const *msg, ...) {
-    fprintf(stderr, "%s:%d: %s: ", file, line, prefix);
-    if (condition) {
-        fprintf(stderr, "`%s` ", condition);
-    }
-    if (msg) {
-        va_list va;
-        va_start(va, msg);
-        vfprintf(stderr, msg, va);
-        va_end(va);
-    }
-    fprintf(stderr, "\n");
-}
-#ifndef cye_assert_msg
-#define cye_assert_msg(cond, msg, ...)                                          \
-  do {                                                                          \
-    if (!(cond)) {                                                              \
-      cye_assert_handler("Assertion Failure", #cond, __FILE__,                  \
-                        (long int) __LINE__, msg, ##__VA_ARGS__);                \
-      DEBUG_TRAP();                                                             \
-    }                                                                           \
-  } while (0)
-#endif
-
-#ifndef cye_assert
-#   define cye_assert(cond) cye_assert_msg(cond, NULL)
-#endif
-
-#define cye_file_fmt "%s:%d:%s PANIC: "
-#define cye_file_fmt_arg __FILE__, __LINE__,__PRETTY_FUNCTION__
-
-#define cye_return_defer(code) do { code; goto defer; } while(0)
-#define cye_result_defer(value) do { result = (value); goto defer; } while(0)
-
-// Consider using logging instead ? Maybe not
-#define cye_todo(msg)        do { fprintf(stderr, "%s:%d: %s TODO: %s\n",       __FILE__, __LINE__,__PRETTY_FUNCTION__,  msg); abort(); } while(0)
-#define cye_unreachable(msg) do { fprintf(stderr, "%s:%d: %s UNREACHABLE: %s\n",__FILE__, __LINE__,__PRETTY_FUNCTION__,  msg); abort(); } while(0)
-#define cye_panic(msg)       do { fprintf(stderr, "%s:%d: %s PANIC: " msg "\n",__FILE__, __LINE__,__PRETTY_FUNCTION__); abort(); } while(0)
-#define cye_not_implemented(msg) assert(0 && msg "Not Implemented.")
-#define cye_shift(items, items_sz)  (assert((items_sz) > 0 && "Shift WAY TOO MUCH"), (items_sz)--, *(items)++)
-
-static void cye__assert_handler(char const *prefix, char const *condition, char const *file, int line, char const *msg, ...) {
-    fprintf(stderr, "%s:%d: %s: ", file, line, prefix);
-    if (condition) {
-        fprintf(stderr, "`%s` ", condition);
-    }
-    if (msg) {
-        va_list va;
-        va_start(va, msg);
-        vfprintf(stderr, msg, va);
-        va_end(va);
-    }
-    fprintf(stderr, "\n");
-}
-#ifndef cye_assert_msg
-#define cye_assert_msg(cond, msg, ...)                                          \
-  do {                                                                          \
-    if (!(cond)) {                                                              \
-      cye_assert_handler("Assertion Failure", #cond, __FILE__,                  \
-                        (int) __LINE__, msg, ##__VA_ARGS__);                \
-      DEBUG_TRAP();                                                             \
-    }                                                                           \
-  } while (0)
-#endif
-
-#ifndef cye_assert
-#   define cye_assert(cond) cye_assert_msg(cond, NULL)
-#endif
-
-#define cye_file_fmt "%s:%d:%s PANIC: "
-#define cye_file_fmt_arg __FILE__, __LINE__,__PRETTY_FUNCTION__
-
-
-
-#define cye_return_defer(code) do { code; goto defer; } while(0)
-#define cye_result_defer(value) do { result = (value); goto defer; } while(0)
-
-
-
-cye_todo
-cye_unreachable
-cye_panic
-cye_not_implemented
-cye_shift
-c
-c
-c
-c
-c
-y
-y
-y
-y
-y
-e
-e
-e
-e
-e
-_
-_
-_
-_
-_
-(msg)        do { fprintf(stderr, "%s:%d: %s TODO: %s\n",       __FILE__, __LINE__,__PRETTY_FUNCTION__,  msg); abort(); } while(0)
-(msg) do { fprintf(stderr, "%s:%d: %s UNREACHABLE: %s\n",__FILE__, __LINE__,__PRETTY_FUNCTION__,  msg); abort(); } while(0)
-(msg)       do { fprintf(stderr, "%s:%d: %s PANIC: " msg "\n",__FILE__, __LINE__,__PRETTY_FUNCTION__); abort(); } while(0)
-(msg) assert(0 && msg "Not Implemented.")
-(items, items_sz)  (assert((items_sz) > 0 && "Shift WAY TOO MUCH"), (items_sz)--, *(items)++)
-#ifndef cye_assert_msg
-
-ifndef 
-cye_assert_msg
-#ifndef cye_assert_msg
-#define cye_assert_msg(cond, msg, ...)                                          \
-  do {                                                                          \
-    if (!(cond)) {                                                              \
-      cye_assert_handler("Assertion Failure", #cond, __FILE__,                  \
-                        (int) __LINE__, msg, ##__VA_ARGS__);                \
-      DEBUG_TRAP();                                                             \
-    }                                                                           \
-  } while (0)
-#endif
-
-
-cye_assert
-assert
- assert
-assert
-#include <assert.h>
-
-static void cye__assert_handler(char const *prefix, char const *condition, char const *file, int line, char const *msg, ...) {
-    fprintf(stderr, "%s:%d: %s: ", file, line, prefix);
-    if (condition) {
-        fprintf(stderr, "`%s` ", condition);
-    }
-    if (msg) {
-        va_list va;
-        va_start(va, msg);
-        vfprintf(stderr, msg, va);
-        va_end(va);
-    }
-    fprintf(stderr, "\n");
-}
-
-static void cye__assert_handler(char const *prefix, char const *condition, char const *file, int line, char const *msg, ...) {
-    fprintf(stderr, "%s:%d: %s: ", file, line, prefix);
-    if (condition) {
-        fprintf(stderr, "`%s` ", condition);
-    }
-    if (msg) {
-        va_list va;
-        va_start(va, msg);
-        vfprintf(stderr, msg, va);
-        va_end(va);
-    }
-    fprintf(stderr, "\n");
-}
-
-static void cye__assert_handler(char const *prefix, char const *condition, char const *file, int line, char const *msg, ...) {
-    fprintf(stderr, "%s:%d: %s: ", file, line, prefix);
-    if (condition) {
-        fprintf(stderr, "`%s` ", condition);
-    }
-    if (msg) {
-        va_list va;
-        va_start(va, msg);
-        vfprintf(stderr, msg, va);
-        va_end(va);
-    }
-    fprintf(stderr, "\n");
-}
-
-static void cye__assert_handler(char const *prefix, char const *condition, char const *file, int line, char const *msg, ...) {
-    fprintf(stderr, "%s:%d: %s: ", file, line, prefix);
-    if (condition) {
-        fprintf(stderr, "`%s` ", condition);
-    }
-    if (msg) {
-        va_list va;
-        va_start(va, msg);
-        vfprintf(stderr, msg, va);
-        va_end(va);
-    }
-    fprintf(stderr, "\n");
-}
-
- {
-    fprintf(stderr, "%s:%d: %s: ", file, line, prefix);
-    if (condition) {
-        fprintf(stderr, "`%s` ", condition);
-    }
-    if (msg) {
-        va_list va;
-        va_start(va, msg);
-        vfprintf(stderr, msg, va);
-        va_end(va);
-    }
-    fprintf(stderr, "\n");
-}
-
- {
-    fprintf(stderr, "%s:%d: %s: ", file, line, prefix);
-    if (condition) {
-        fprintf(stderr, "`%s` ", condition);
-    }
-    if (msg) {
-        va_list va;
-        va_start(va, msg);
-        vfprintf(stderr, msg, va);
-        va_end(va);
-    }
-    fprintf(stderr, "\n");
-}
-Functions 
-#define assert_msg cye_assert_msg
-
-_msg 
-_msg
-#undef
-#ifndef cye_assert
-#   define cye_assert(cond) cye_assert_msg(cond, NULL)
-#endif
-
-
-cye_file_fmt
-cye_file_fmt_arg
-cye_file_fmt_arg 
-    
-file_fmt_arg
- "%s:%d:%s PANIC: "
- __FILE__,__LINE__,__PRETTY_FUNCTION__
-static 
-static 
-    
-    
-0
-cye_assert_msg
--
--
-#define cye_shift(items, items_sz)  ((cye_assert_msg(((items_sz) > 0)), "Shift WAY TOO MUCH"), (items_sz) -= 1, *(items)++)
-
-ASS
-assert
-assert
-__ASSERT_VOID_CAST
-ASS
-#define cye_shift(items, items_sz)  ((__ASSERT_VOID_CAST(((items_sz) > 0)), "Shift WAY TOO MUCH"), (items_sz) -= 1, *(items)++)
-
-#define cye_shift(items, items_sz)  (cye_assert_msg(((items_sz) > 0), "%s", "Shift WAY TOO MUCH"), (items_sz) -= 1, *(items)++)
-
-#define cye_shift(items, items_sz)  (cye_assert_msg(((items_sz) > 0), "%s", "Shift WAY TOO MUCH"), (items_sz) -= 1, *(items)++)
-
-void cye__assert_handler(char const *prefix, char const *condition, char const *file, int line, char const *msg, ...);
-
-#ifndef cye_assert_msg
-#define cye_assert_msg(cond, msg, ...)                                           \
-  do {                                                                           \
-    if (!(cond)) {                                                               \
-      cye__assert_handler("Assertion Failure", #cond, __FILE__,                  \
-                        (int) __LINE__, msg, ##__VA_ARGS__);                     \
-      DEBUG_TRAP();                                                              \
-    }                                                                            \
-  } while (0)
-#endif
-
-
-cye
-In file included from cye.c:3:
-cye.h: In function ‘cye__rebuild_ourselves’:
-cye.h:949:3: error: expected expression before ‘do’
-  949 |   do {                                                                           \
-      |   ^~
-cye.h:943:38: note: in expansion of macro ‘cye_assert_msg’
-  943 | #define cye_shift(items, items_sz)  (cye_assert_msg(((items_sz) > 0), "%s", "Shift WAY TOO MUCH"), (items_sz) -= 1, *(items)++)
-      |                                      ^~~~~~~~~~~~~~
-cye.h:1283:31: note: in expansion of macro ‘cye_shift’
- 1283 |     const char *binary_path = cye_shift(argv, argc);
-      |                               ^~~~~~~~~
-cye.c: In function ‘main’:
-cye.h:949:3: error: expected expression before ‘do’
-  949 |   do {                                                                           \
-      |   ^~
-cye.h:943:38: note: in expansion of macro ‘cye_assert_msg’
-  943 | #define cye_shift(items, items_sz)  (cye_assert_msg(((items_sz) > 0), "%s", "Shift WAY TOO MUCH"), (items_sz) -= 1, *(items)++)
-      |                                      ^~~~~~~~~~~~~~
-cye.h:2992:25: note: in expansion of macro ‘cye_shift’
- 2992 | #define shift           cye_shift
-      |                         ^~~~~~~~~
-cye.c:51:32: note: in expansion of macro ‘shift’
-   51 |     const char *program_name = shift(argv, argc);
-      |                                ^~~~~
-compilation terminated due to -fmax-errors=2.
-
-
-// #include <assert.h>
-
-;
-  
-
-
-
-
-
-
-
-
-
-
-#ifndef CYE_DARRAY_INIT_CAP
-#   define CYE_DARRAY_INIT_CAP 256
-#endif
-
-#ifndef CYE_DARRAY_CAP_MULTIPLIER
-#   define CYE_DARRAY_CAP_MULTIPLIER 2
-#endif
-
-
-#ifndef CYE_TEMP_CAPACITY
-#   define CYE_TEMP_CAPACITY megabytes(16)
-#endif
-
-#ifndef CYE_MAX_TRACE_LOG_MSG_LENGTH
-#   define CYE_MAX_TRACE_LOG_MSG_LENGTH 1024
-#endif
-
-
-#define todo            cye_todo
-#define unreachable     cye_unreachable
-#define not_implemented cye_not_implemented
-#define shift           cye_shift
-
-#define file_fmt        cye_file_fmt
-#define file_fmt_arg    cye_file_fmt_arg
-
-cye_ds_write_zstr
-      
-#include "cye.h"
-
-#include "cye.h"
-
-"}
-CYE_IMPLEMENTATION
-CYE_IMPLEMENTATION
-
-u0 cye_set_default_context(Cye_Context ctx) {
-    cye_unused(ctx)
-    cye_panic("YAY");
-}
-
-         
-cye
-    "assertion", // must be last
-
-
-
-assertion
-    cye_assert_msg(4 == 5, "waht is this");
-
-s
-// Previous
-// #ifndef cye_assert_msg
-// #define cye_assert_msg(cond, msg, ...)                                           \
-//   do {                                                                           \
-//     if (!(cond)) {                                                               \
-//       cye__assert_handler("Assertion Failure", #cond, __FILE__,                  \
-//                         (int) __LINE__, msg, ##__VA_ARGS__);                     \
-//       DEBUG_TRAP();                                                              \
-//     }                                                                            \
-//   } while (0)
-// #endif
-
-
-
-5
-4
-    "assertion", // must be last
-
-cmd_redirect_pipe
-void *cye_trealloc(void *ptr, usz size) {
-    unused(ptr);
-    // Fragmentation, but who cares
-    return cye_talloc(size);
-}
-
-    
-    unused(ptr);
-
-    if 
-
-cye_temp_data.size + size > CYE_TEMP_CAPACITY
-cye_temp_data.size + size > CYE_TEMP_CAPACITY
-cye_temp_save() + size >
-cye_temp_data
-CYE_TEMP_CAPACITY
-static struct {
-    usz size;
-    byte buffer[CYE_TEMP_CAPACITY];
-} cye_temp_data = {0};
-
-    void *cye_trealloc(void *ptr, usz size) {
-
-    if (ptr == NULL) {
-        return cye_talloc(size);
-    }
-
- NULL
-cye_talloc(size);
-ckk
-                
-    
-    // If ptr is the last allocation, we can just adjust the size
-    if ((byte*)ptr + ((byte*)cye_temp_data.buffer + cye_temp_data.size - (byte*)ptr) 
-        == cye_temp_data.buffer + cye_temp_data.size) 
-    {
-        // Adjust total size
-        cye_temp_data.size = (byte*)ptr - cye_temp_data.buffer + size;
-        return ptr;
-    }
-    
-    // Otherwise, allocate new space and copy
-    void *new_ptr = cye_talloc(size);
-    if (new_ptr) {
-        memcpy(new_ptr, ptr, size);
-    }
-    return new_ptr;
-
-CYE_TEMP_CAPACITY
- 
-    // If ptr is the last allocation, we can just adjust the size
-    if ((byte*)ptr + ((byte*)cye_temp_data.buffer + cye_temp_data.size - (byte*)ptr) 
-        == cye_temp_data.buffer + cye_temp_data.size) 
-    {
-        // Adjust total size
-        cye_temp_data.size = (byte*)ptr - cye_temp_data.buffer + size;
-        return ptr;
-    }
-    
-    // Otherwise, allocate new space and copy
-    void *new_ptr = cye_talloc(size);
-    if (new_ptr) {
-        memcpy(new_ptr, ptr, size);
-    }
-
-    
-
-}
-
-    return new_ptr;
-
-size < remaining_space
-usz copy_size = size
-usz 
-void test_temporary_storage(void) {
-
-temporary_storage
-test_reallocation
-    alloc
-
-    ptr
-
-
-
-    ds_
-
-    
-
-b
-sprintf
-sprintf
-20
-siz
-size
-20
-<
-remaining_space
-size
-CYE_TEMP_CAPACITY
-maximum 
-CYE_TEMP_CAPACITY
-            cye_trace_warn("Wanted %zu bytes but can only give %zu to not exceed %d CYE_TEMP_CAPACITY", size, remaining_space, CYE_TEMP_CAPACITY);
-
-        
-{"
-
-remaining_space
-cye_temp_data
-cye_temp_data.size
- 
-cye_temp_data.buffer, cye_temp_data.size
-,
-    snprintf(size);
-
-       " 
-
-    snprintf(size);
-
--Wunused-parameter
-cye
-    "temporary_storage",
-
- 
-            cye_trace_warn("Wanted %zu bytes but can only give %zu to not exceed %d CYE_TEMP_CAPACITY", size, remaining_space, CYE_TEMP_CAPACITY);
-
-    
-setT
-
-void cye_trace_log(Cye_Log_Level level, const char *fmt, ...);
-
-_log
-cye_set_trace_level
-void cye_set_trace_level(Cye_Log_Level level);
-
-#define trace_log   cye_trace_log
-
-cye_set_trace_level
-cye_trace_log
-trace_log
-void cye_set_trace_level(Cye_Log_Level level);
-
-set_trace_level
-        cye_trace_fatal(
-
-        return cye_talloc(size);
-
- 
-last allocation
-l
-        cye_trace_warn("Wanted %zu bytes but can only give %zu to not exceed %d CYE_TEMP_CAPACITY", size, remaining_space, CYE_TEMP_CAPACITY);
-
-        cye_trace_log(CYE_LOG_TRACE, "Reallocation done on pointer from last allocation");
-
-TRACE
-    char* ptr = talloc(size_of(char)*size);
-
-t
-    cye_trace_info(
-       "ptr=%p\ncye_temp_data={.buffer=%p, .size=%zu, .buffer+size=%p}\n"
-       "%d CYE_TEMP_CAPACITY",
-       ptr, cye_temp_data.buffer, cye_temp_data.size, (cye_temp_data.buffer + cye_temp_data.size),
-       CYE_TEMP_CAPACITY
-    );
-
-void *cye_trealloc(void *ptr, usz size) {
-
-#define talloc      cye_talloc
-
-  
-    char* ptr = talloc(size_of(char)*size);
-
-_
-z
-    usz size;
-
-size
-  
-l
-last
-cye_temp_data
-temp
-    cye_temp_data.last  = result;
-
-cye_temp_data.buffer
-last
-cye_temp_data.last
-cye_talloc(size)
-cye_temp_data.last
-cye_talloc(size)
-        return cye_temp_data.last;
-
-        cye_temp_data.last = cye_talloc(size);
-
-        cye_temp_data.last = cye_talloc(size);
-        return cye_temp_data.last;
-
-        return cye_talloc(size);
-
-        cye_trace_log(CYE_LOG_FATAL, "Reallocation done on pointer from last allocation");
-
-FATAL
-    cye_temp_data.last = new_ptr;
-
-
-
-        
-
-FATAL
-> CYE_TEMP_CAPACITY
-CYE_TEMP_CAPACITY
+test_cmd_capture
+cmd_run_sync_capture
 buffer
-       "ptr=%p\ncye_temp_data={.buffer=%p, .size=%zu, .buffer+size=%p}\n"
+        buffer[bytes_read] = '\0';
 
-       "ptr=%p\ncye_temp_data={.buffer=%p, .size=%zu, .buffer+size=%p}\n"
+        ds_write_buf(&result->stderr_output, buffer, bytes_read);
 
-cye_temp_data.buffer
-leak_20_bytes
-    assert((leak_20_bytes - cye_temp_data.buffer) == 20);
+        ds_write(&result->stdout_output, buffer);
 
-            cye_trace_log(CYE_LOG_WARNING, "Reallocation returns exceeds CYE_TEMP_CAPACITY");
+        buffer[bytes_read] = '\0';
 
--
-leak_20_bytes
-    assert((leak_20_bytes - cye_temp_data.buffer) == 20);
-
--
-ptr
-leak_20_bytes
-byte*
-(byte*)ptr + 20
-leak_20_bytes
-cye_temp_data.buffer +
-0
-CYE_TEMP_CAPACITY
-    usz size  = 3;
-
-3
-2
-0
-leak_1_bytes
-leak_20_bytes
-leak_20_bytes
-leak_20_bytes
-    byte* leak_1_bytes = talloc(size_of(char)*1);
-
-size
-leak_1_bytes
-    leak_1_bytes = trealloc(leak_1_bytes, 1);
-
-talloc(1);
-CYE_TEMP_CAPACITY
-d
-    cye_trace_info(
-       "ptr=%p\ncye_temp_data={.buffer=%p, .size=%zu, .buffer+size=%p}\n"
-       "%d CYE_TEMP_CAPACITY",
-       ptr, cye_temp_data.buffer, cye_temp_data.size, (cye_temp_data.buffer + cye_temp_data.size),
-       CYE_TEMP_CAPACITY
-    );
+        ds_write_buf(&result->stderr_output, buffer, bytes_read);
 
     
-    
- \
-print_data
-print_data(ptr)                                                                               \
-print_data
-    print_data(ptr);
+buf
+    ds_write_zero(&result->stderr_output);
 
-leak_1_bytes
-ptr
-    print_data(leak_1_bytes);
-
-    print_data(leak_1_bytes);
-
-                                                                                     
-                          
-                               
-          
-INFO
-1
-2
-    leak_1_bytes = trealloc(leak_1_bytes, 1);
-    print_data(leak_1_bytes);
-
-1
-.buffer+size=%p
-+
-size
-buffer[size-1]
-(cye_temp_data.buffer + cye_temp_data.size)
-    leak_1_bytes = trealloc(leak_1_bytes, 2);
-    print_data(leak_1_bytes);
-
-2
-    assert((leak_1_bytes - cye_temp_data.buffer) == 1);
-    assert((byte*)ptr + 1 == leak_1_bytes);
-
-    assert((leak_1_bytes - cye_temp_data.buffer) == 1);
-    assert((byte*)ptr + 1 == leak_1_bytes);
-
+stderr_output
+stdout_output
+stderr_output
+test_cmd_capture
+    test_cmd_capture();
     exit(1);
 
 
-    DString ds = {.items = ptr, .count=0, .capacity=size};
-    ptr[size-1] = 0;
-    ds_write(&ds, "hello");
-
-    cye_trace_info(
-       "ptr=%p\ncye_temp_data={.buffer=%p, .size=%zu, .buffer+size=%p}\n"
-       "%d CYE_TEMP_CAPACITY",
-       ptr, cye_temp_data.buffer, cye_temp_data.size, (cye_temp_data.buffer + cye_temp_data.size),
-       CYE_TEMP_CAPACITY
-    );
-
-    ptr = trealloc(ptr, size_of(char)*size);
-
-    cye_trace_info(
-       "ptr=%p\ncye_temp_data={.buffer=%p, .size=%zu, .buffer+size=%p}\n"
-       "%d CYE_TEMP_CAPACITY",
-       ptr, cye_temp_data.buffer, cye_temp_data.size, (cye_temp_data.buffer + cye_temp_data.size),
-       CYE_TEMP_CAPACITY
-    );
-}
-
-    DString ds = {.items = ptr, .count=0, .capacity=size};
-    ptr[size-1] = 0;
-    ds_write(&ds, "hello");
-
-    cye_trace_info(
-       "ptr=%p\ncye_temp_data={.buffer=%p, .size=%zu, .buffer+size=%p}\n"
-       "%d CYE_TEMP_CAPACITY",
-       ptr, cye_temp_data.buffer, cye_temp_data.size, (cye_temp_data.buffer + cye_temp_data.size),
-       CYE_TEMP_CAPACITY
-    );
-
-    ptr = trealloc(ptr, size_of(char)*size);
-
-    cye_trace_info(
-       "ptr=%p\ncye_temp_data={.buffer=%p, .size=%zu, .buffer+size=%p}\n"
-       "%d CYE_TEMP_CAPACITY",
-       ptr, cye_temp_data.buffer, cye_temp_data.size, (cye_temp_data.buffer + cye_temp_data.size),
-       CYE_TEMP_CAPACITY
-    );
-
-tesTv_
-
-H
-    set_trace_level(LOG_TRACE);
-
-    set_trace_level(LOG_TRACE);
-
-RACE
-T
-    print_data(leak_1_bytes);
-
-    exit(1);
-    test_temporary_storage();
-
-
-void test_temporary_storage(void) {
-    context = temp_context();
-
-    int* a = context.alloc(size_of(int));
-
-    if (temp_data.size == size_of(int)) {
-        trace_info("Passed: " TEMP);
-    } else {
-        trace_info("Failed: " TEMP);
-    }
-
-    // Reloc on temp is the same as alloc so we lose the first
-    // pointer `a` and all that is expected from relloc goes for temporary
-    // realloc, can't use `a` anymore
-    int* b = context.realloc(a, 2*size_of(int));
-    if (temp_data.size == 3*size_of(int)) {
-        trace_info("Passed: " TEMP);
-    } else {
-        trace_info("Failed: " TEMP);
-    }
-
-    assert(a != b);
-
-    usz checkpoint = temp_save();
-    // DArray(int) da = {0};
-    struct {
-        int* items;
-        usz count;
-        usz capacity;
-    } da = {0};
-    da_append(&da, 5);
-    da_append(&da, 5);
-    da_append(&da, 5);
-    for (usz idx = 0; idx < da.count; idx += 1) {
-        trace_info("numbers %zuth is da.items[idx]=%d", idx,  da.items[idx]);
-    }
-
-    temp_rewind(checkpoint);
-    assert(temp_data.size == 3*size_of(int));
-
-    if (temp_data.size == 3*size_of(int)) {
-        trace_info("Passed: " TEMP);
-    } else {
-        trace_info("Failed: " TEMP);
-    }
-}
-void test(void) {
-    set_trace_level(LOG_INFO);
-    temp_reset();
-
-    DString ds = {.items = ptr, .count=0, .capacity=size};
-    ptr[size-1] = 0;
-    ds_write(&ds, "hello");
-    print_data(leak_1_bytes);
-
-    cye_trace_info(
-       "ptr=%p\ncye_temp_data={.buffer=%p, .size=%zu, .buffer+size=%p}\n"
-       "%d CYE_TEMP_CAPACITY",
-       ptr, cye_temp_data.buffer, cye_temp_data.size, (cye_temp_data.buffer + cye_temp_data.size),
-       CYE_TEMP_CAPACITY
-    );
-
-    ptr = trealloc(ptr, size_of(char)*size);
-
-    cye_trace_info(
-       "ptr=%p\ncye_temp_data={.buffer=%p, .size=%zu, .buffer+size=%p}\n"
-       "%d CYE_TEMP_CAPACITY",
-       ptr, cye_temp_data.buffer, cye_temp_data.size, (cye_temp_data.buffer + cye_temp_data.size),
-       CYE_TEMP_CAPACITY
-    );
-}
-
-void test_reallocation(void) {
-    set_trace_level(LOG_TRACE);
-    usz size  = 1;
-
-    char* ptr = talloc(size);
-    print_data(ptr);
-
-    byte* leak_1_bytes = NULL;
-    print_data(leak_1_bytes);
-
-    leak_1_bytes = trealloc(leak_1_bytes, 1);
-    print_data(leak_1_bytes);
-
-
-    leak_1_bytes = trealloc(leak_1_bytes, 1);
-    print_data(leak_1_bytes);
-
-    assert((leak_1_bytes - cye_temp_data.buffer) == 1);
-    assert((byte*)ptr + 1 == leak_1_bytes);
-
-    leak_1_bytes = trealloc(leak_1_bytes, 2);
-    print_data(leak_1_bytes);
-
-    leak_1_bytes = trealloc(leak_1_bytes, 3); // Should give a WARNING and return null
-    print_data(leak_1_bytes);
-
-
-}
-
-void test(void) {
-    set_trace_level(LOG_INFO);
-    temp_reset();
-
-    DString ds = {.items = ptr, .count=0, .capacity=size};
-    ptr[size-1] = 0;
-    ds_write(&ds, "hello");
-    print_data(leak_1_bytes);
-
-    cye_trace_info(
-       "ptr=%p\ncye_temp_data={.buffer=%p, .size=%zu, .buffer+size=%p}\n"
-       "%d CYE_TEMP_CAPACITY",
-       ptr, cye_temp_data.buffer, cye_temp_data.size, (cye_temp_data.buffer + cye_temp_data.size),
-       CYE_TEMP_CAPACITY
-    );
-
-    ptr = trealloc(ptr, size_of(char)*size);
-
-    cye_trace_info(
-       "ptr=%p\ncye_temp_data={.buffer=%p, .size=%zu, .buffer+size=%p}\n"
-       "%d CYE_TEMP_CAPACITY",
-       ptr, cye_temp_data.buffer, cye_temp_data.size, (cye_temp_data.buffer + cye_temp_data.size),
-       CYE_TEMP_CAPACITY
-    );
-}
-
-
-
-void test(void) {
-    set_trace_level(LOG_INFO);
-    temp_reset();
-
-    DString ds = {.items = ptr, .count=0, .capacity=size};
-    ptr[size-1] = 0;
-    ds_write(&ds, "hello");
-    print_data(leak_1_bytes);
-
-    cye_trace_info(
-       "ptr=%p\ncye_temp_data={.buffer=%p, .size=%zu, .buffer+size=%p}\n"
-       "%d CYE_TEMP_CAPACITY",
-       ptr, cye_temp_data.buffer, cye_temp_data.size, (cye_temp_data.buffer + cye_temp_data.size),
-       CYE_TEMP_CAPACITY
-    );
-
-    ptr = trealloc(ptr, size_of(char)*size);
-
-    cye_trace_info(
-       "ptr=%p\ncye_temp_data={.buffer=%p, .size=%zu, .buffer+size=%p}\n"
-       "%d CYE_TEMP_CAPACITY",
-       ptr, cye_temp_data.buffer, cye_temp_data.size, (cye_temp_data.buffer + cye_temp_data.size),
-       CYE_TEMP_CAPACITY
-    );
-}
-
-
-
-3
-x
-CYE_TEMP_CAPACITY
-
-
-ptr == NULL
-cye_temp_data.buffer + CYE_TEMP_CAPACITY
-    ptr[size-1] = 0;
-
-0
- 
-    cye_trace_info(
-       "ptr=%p\ncye_temp_data={.buffer=%p, .size=%zu, .buffer+size=%p}\n"
-       "%d CYE_TEMP_CAPACITY",
-       ptr, cye_temp_data.buffer, cye_temp_data.size, (cye_temp_data.buffer + cye_temp_data.size),
-       CYE_TEMP_CAPACITY
-    );
-
-
-    ptr = trealloc(ptr, size_of(char)*size);
-
-
-       "ptr=%p\ncye_temp_data={.buffer=%p, .size=%zu, .buffer+size=%p}\n"
-       "%d CYE_TEMP_CAPACITY",
-       ptr, cye_temp_data.buffer, cye_temp_data.size, (cye_temp_data.buffer + cye_temp_data.size),
-       CYE_TEMP_CAPACITY
-    );
-
-
-
     
 
-
-    ptr = trealloc(ptr, size_of(char)*size);
-
+test_pipe_tool
 
 
- //
-    ptr = talloc(20); // leak
+// Example usage:
+#if 0
 
-ptr = 
-    ptr = talloc(20); // leak
+#endif
 
-
-
-    DString ds = {.items = ptr, .count=0, .capacity=size};
-
-#define ds_fmt     cye_ds_fmt
-#define ds_fmt_arg cye_ds_fmt_arg
-
-"%.*s"
-(ds).count
-(ds).items,
-    ptr[size-1] = 0;
-
-    ptr[size-1] = '-';
-
-test_reallocation_with_dstring
-test_reallocation
-// leak
- // leak
- // leak
-;
-      
-    DString ds = {.items = ptr, .count=0, .capacity=size};
-    ds_write(&ds, "hello");
-
-#define print_data(ptr)                                                \
-
-data
-                                                \
-cye_trace_info(                                                        \
-
-                                                        \
-print_ds
-    print_data(leak_1_bytes);
+Pipe_Handle
+Pipe_Descriptor
+INVALID_PIPE_DESCRIPTOR
+INVALID_PIPE_HANDLE
+INVALID_PIPE_HANDLE
 
 
 
 
-    ptr = trealloc(ptr, size_of(char)*size);
-    cye_trace_info(
-
-    ptr = trealloc(ptr, size_of(char)*size);
-    cye_trace_info(
-
-size
-size
-20
-size
-+
-1
-size
- 2*20
-INFO
-    set_trace_level(LOG_TRACE);
 
 
-void test(void) {
-    temp_reset();
-
-    DString ds = {.items = ptr, .count=0, .capacity=size};
-    ptr[size-1] = 0;
-    ds_write(&ds, "hello");
-    print_data(leak_1_bytes);
-
-    cye_trace_info(
-       "ptr=%p\ncye_temp_data={.buffer=%p, .size=%zu, .buffer+size=%p}\n"
-       "%d CYE_TEMP_CAPACITY",
-       ptr, cye_temp_data.buffer, cye_temp_data.size, (cye_temp_data.buffer + cye_temp_data.size),
-       CYE_TEMP_CAPACITY
-    );
-
-    ptr = trealloc(ptr, size_of(char)*size);
-
-    cye_trace_info(
-       "ptr=%p\ncye_temp_data={.buffer=%p, .size=%zu, .buffer+size=%p}\n"
-       "%d CYE_TEMP_CAPACITY",
-       ptr, cye_temp_data.buffer, cye_temp_data.size, (cye_temp_data.buffer + cye_temp_data.size),
-       CYE_TEMP_CAPACITY
-    );
-}
-
-    set_trace_level(LOG_INFO);
-
+INVALID_PIPE_DESCRIPTOR
+INVALID_PIPE_HANDLE
+INVALID_PIPE_HANDLE
+INVALID_PIPE_HANDLE
+INVALID_PIPE_HANDLE
+INVALID_PIPE_HANDLE
+INVALID_PIPE_HANDLE
+pipe_close_descriptor
 s
-%p
-)%p
-(ds).items
-    print_data(ptr);
-    print_ds(ds);
-
-        cye_trace_log(CYE_LOG_TRACE, "Reallocation done on pointer from last allocation");
-
-on pointer
-on 
-cye_trace_log
-ptr
-#include "cye.h"
-
-cye
-_
-one_ptr
-    assert_true(ptr != old_ptr);
-
-h
-    *one_ptr = 0;
-    assert_true(strcmp("kello",old_ptr);
-
-old_ptr
-    {
-        *one_ptr = 0;
-        *old_ptr = 'k';
-        assert_true(0 == strcmp("kello",old_ptr));
-    }
-
-        assert_true(0 == strcmp("kello",old_ptr));
-
-k
-        assert_false(0 == strcmp("hello",old_ptr));
+pipe_close_descriptor
+pipe_close_descriptor
+pipe_close_descriptor
+pipe_close_handle
+INVALID_PIPE_DESCRIPTOR
+INVALID_PIPE_HANDLE
+INVALID_PIPE_HANDLE
+INVALID_PIPE_HANDLE
+INVALID_PIPE_HANDLE
+_HANDLE
+INVALID_PIPE_DESCRIPTOR
+INVALID_PIPE_DESCRIPTOR
+INVALID_PIPE_HANDLE
+    // Initialize output strings if not already initialized
+    if (!result->stdout_output.items) ds_init(&result->stdout_output);
+    if (!result->stderr_output.items) ds_init(&result->stderr_output);
 
     
-false
 
-
-
-void test_reallocation(void) {
-    set_trace_level(LOG_TRACE);
-    usz size  = 1;
-
-    char* ptr = talloc(size);
-    print_data(ptr);
-
-    byte* leak_1_bytes = NULL;
-    print_data(leak_1_bytes);
-
-    leak_1_bytes = trealloc(leak_1_bytes, 1);
-    print_data(leak_1_bytes);
-
-
-    leak_1_bytes = trealloc(leak_1_bytes, 1);
-    print_data(leak_1_bytes);
-
-    assert((leak_1_bytes - cye_temp_data.buffer) == 1);
-    assert((byte*)ptr + 1 == leak_1_bytes);
-
-    leak_1_bytes = trealloc(leak_1_bytes, 2);
-    print_data(leak_1_bytes);
-
-    leak_1_bytes = trealloc(leak_1_bytes, 3); // Should give a WARNING and return null
-    print_data(leak_1_bytes);
+stdout_output
+stdout_output
+t_output
+_output
+stderr_output
+stderr
+// Expand environment variables
+ZString cye_expand_vars(ZString path) {
+    cye_todo("VAI TRABALHAR VAGABUNDO");
 }
 
-    char* ptr = talloc(size);
+// Expand ~ and ~user
+ZString cye_expand_user(ZString path) {
+    cye_todo("VAI TRABALHAR VAGABUNDO");
+}
 
-    byte* leak_1_bytes = NULL;
-    print_data(leak_1_bytes);
+// Expand environment variables
+ZString cye_expand_vars(ZString path) {
+    cye_todo("VAI TRABALHAR VAGABUNDO");
+}
 
-    leak_1_bytes = trealloc(leak_1_bytes, 1);
-    print_data(leak_1_bytes);
+MAX_PATH
+MAX_PATH
+    cye_context
 
-
-    leak_1_bytes = trealloc(leak_1_bytes, 1);
-    print_data(leak_1_bytes);
-
-    assert((leak_1_bytes - cye_temp_data.buffer) == 1);
-    assert((byte*)ptr + 1 == leak_1_bytes);
-
-    leak_1_bytes = trealloc(leak_1_bytes, 2);
-    print_data(leak_1_bytes);
-
-
-    ptr = trealloc(ptr, size);
-
-()
-cye_
-    char* ptr = talloc(size);
+size_t 
+size_t 
+                                                                          
+// Expand ~ and ~user
+ZString cye_expand_user(ZString path) {
+    cye_todo("VAI TRABALHAR VAGABUNDO");
+}
 
 
 
-#
-*
-size
-    char* ptr = talloc(size);
+uzs
+uzs
+cye.h:1810:33: error: implicit declaration of function ‘getpwuid’; did you mean ‘geteui
+’? [-Wimplicit-function-declaration]
 
-ptr 
-_ptr 
-talloc(size);
-    ont
+#include <shlobj.h>
 
-0
-test_reallocation_exceeds
+   
+#ifdef _WIN32
+#include <windows.h>
+#else
+
+#include <pwd.h>
+#include <unistd.h>
+
+.
+                                                                           
+pipe_write
+void test_path_others(void) {
+    assert_true(0 == strcmp(path_base_name("/home/64gb/senha.txt"), "senha.txt"));
+}
+
+test_path_others
+// #define cye_return_defer(value) do { result = (value); goto defer; } while(0)
+
+xpand_user
+expand_user
+     
+     
+expand_vars
+ZString cye_path_expand_vars(ZString path);  // Expand environment variables
+
+;  // Expand environment variables
+)
+ZString cye_path_expand_vars(ZString path) {cye_panic()
+
+- [ ] Make Pipe example standard from the library
+        cmd_run_sync_capture_output_and_reset()
+
+ 
+Make Pipe example standard from the library
+   cmd_run_sync_capture_output_and_reset()
+     
+
+    "path",
+
+test_expand_user
+c
+(
 
 
-    "temporary_storage",
+    assert_true(0 == strcmp(path_base_name("/home/64gb/senha.txt"));
 
-result
+0 == strcmp(path_base_name("/home/64gb/senha.txt")
+- [ ] Path: test expand vars
+
+test expand vars
+- [ ] Path: Glob
+
+ Glob
+C
+ wkd wk
+
+0 == strcmp(path_base_name("/home/64gb/senha.txt")
+    exit(1);
+
+senha.txt
+    assert_true(0 == strcmp(path_expand_user("~/senha.txt"), "/home/excyber/senha.txt"));
+
+    assert_true(0 == strcmp(path_expand_user("~/senha.txt"), "/home/excyber/senha.txt"));
+
 o
-    assert_true(old != ptr);
+// @Leak: maybe make temp? or provide the DString to write to
 
-!
-*ptr
+// Expand ~ and ~user to full home directory path
+and  
+~user
+file_exists
+cye_file_exists
+        
 
+        trace_log(LOG_INFO, "Current path `%s`", path);
 
-    ptr = trealloc(ptr, size);
+file
+0
+        write_entire_file();
+        trace_log(LOG_INFO, "Current path `%s`", );
 
-    leak_1_bytes = trealloc(leak_1_bytes, 3); // Should give a WARNING and return null
-    print_data(leak_1_bytes);
-
-#include "cye.h"
-
-cye
-    print_data(ptr);
-
-nill
-    print_data(null);
-
-ptr
-null
-    print_data(ptr);
-
-ptr
-ptr
-    print_data(leak);
-
-ptr
-leak
-CYE_TEMP_CAPACITY
-a 
- 
-cye_temp_data.last = 
-cye_talloc(size);
-ptr = 
-        // `talloc` already sets the last pointer
-
-cye_talloc(size);
-cye_temp_data.last
-        cye_temp_data.last = cye_talloc(size);
-
-        // `talloc` already sets the last pointer
-
-    cye_temp_data.last = new_ptr;
-
-// `talloc` already sets the last pointer
-new_ptr
-pointer
-        print_data(ptr);
-
-
-
-// If not the last pointer anymore
-        assert_true(*old == *ptr && *ptr == 'y');
-
-y
- 
-//     "nob_sv_end_with",
-
-    exit(1);
-
-    temp_reset();
-
-
-
-char*
-byte
-- [x] Nvim: Set up Snippets
-
-x
-Set up Snippets
- 
-    exit(0);
-
-    exit(1);
-
-l
-, can't use `a` anymore
-
-
-    assert(a != b);
-
-!
-- [x] Nvim: Set up Snippets
-
-x
-Set up Snippets

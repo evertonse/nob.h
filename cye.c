@@ -3,13 +3,14 @@
 #include "shared.h"
 
 const char *test_names[] = {
+    "making_files",
+    "path",
     "cmd_redirect_pipe_win_and_linux",
     "cmd_redirect_pipe",
     "temporary_storage_realloc",
     "temporary_storage",
     "cmd_redirect",
     "slice",
-    "path",
     "making_dirs",
     "current_dir",
     "dynamic_string",

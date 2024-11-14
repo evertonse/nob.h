@@ -193,7 +193,7 @@ int test_cmd_capture(void) {
         return 1;
     }
     
-    cmd_append(&cmd, "ls", ".");
+    cmd_append(&cmd, "ls", "/");
     
     if (!cmd_run_sync_capture(&cmd, &capture)) {
         trace_error("Failed to run command");
@@ -302,6 +302,8 @@ defer:
 }
 
 int main(int argc, char *argv[]) {
+    unused(pipe_write);
+
     test_cmd_capture();
     test_pipe_tool();
     exit(1);

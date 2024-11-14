@@ -20,7 +20,6 @@
 //  Basic Includes
 //----------------------------------------------------------------------------------
 
-#include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -31,6 +30,7 @@
 #include <math.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <time.h>
 
 
 #ifdef _WIN32
@@ -41,7 +41,12 @@
 #    define _WINCON_
 #    include <windows.h>
 #    include <direct.h>
+#    include <shlobj.h>
 #    include <shellapi.h>
+#    include <io.h>
+#    define stat _stat
+#    define utimbuf _utimbuf
+#    define utime _utime
 #    define PATH_SEPARATOR "\\"
 #    define PATH_SEPARATOR_CHAR '\\'
 #    define PATH_MAX MAX_PATH
@@ -52,6 +57,10 @@
 #    include <unistd.h>
 #    include <fcntl.h>
 #    include <dirent.h>
+#    include <pwd.h>
+#    include <unistd.h>
+#    include <utime.h>
+#    include <errno.h>
 #    define PATH_SEPARATOR "/"
 #    define PATH_SEPARATOR_CHAR '/'
 #endif
@@ -62,7 +71,6 @@
 //  Basic Definitions with No Prefix
 //----------------------------------------------------------------------------------
 
-// #define cye_return_defer(value) do { result = (value); goto defer; } while(0)
 #ifndef as
 #   define as(Type) (Type)
 #endif
@@ -313,6 +321,11 @@
 #   define CYE_MAX_TRACE_LOG_MSG_LENGTH 1024
 #endif
 
+#ifndef CYE_PATH_MAX
+#   define CYE_PATH_MAX (PATH_MAX*2)
+#endif
+
+
 /*..................................................................................
  .                                                                                 .
  .                                Types                                            .
@@ -350,18 +363,23 @@ typedef uint8_t     byte;
 typedef void        u0;
 typedef void*       rawptr;
 
-// Unsigned Integers
-typedef int64_t      i64;
-typedef int32_t      i32;
-typedef int16_t      i16;
-typedef int8_t       i8;
-typedef size_t       usz;
-typedef ptrdiff_t    isz;
+//      Unsigned  Integers
+typedef int64_t   i64;
+typedef int32_t   i32;
+typedef int16_t   i16;
+typedef int8_t    i8;
+typedef size_t    usz;
+typedef ptrdiff_t isz;
 
-typedef size_t       usize;
-typedef ptrdiff_t    isize;
+typedef size_t    usize;
+typedef ptrdiff_t isize;
 
-typedef i32          rune;
+
+typedef i32 rune;
+typedef i8  b8;
+typedef i16 b16;
+typedef i32 b32;
+
 #define RUNE_INVALID as(Rune)(0xfffd)
 #define RUNE_MAX     as(Rune)(0x0010ffff)
 #define RUNE_BOM     as(Rune)(0xfeff)
@@ -606,8 +624,8 @@ char* cye_path_create_from_array(ZString paths[], usz paths_count);
 
 
 ZString cye_path_base_name(const char *path);
-ZString cye_expand_user(ZString path);  // Expand ~ and ~user
-ZString cye_expand_vars(ZString path);  // Expand environment variables
+ZString cye_path_expand_user(ZString path);  // Expand ~ and ~user to full home directory path
+ZString cye_path_expand_vars(ZString path);  // Expand environment variables
 
 int  cye_needs_rebuild_from_buf(const char *output_path, const char **input_paths, usz input_paths_count);
 
@@ -621,7 +639,7 @@ int  cye_needs_rebuild_from_buf(const char *output_path, const char **input_path
 TString cye_path_temp_cwd(void);                                  // Get current working directory
 bool cye_path_set_cwd(const char *path);                          // Change current working directory
 
-bool cye_file_exists(const char *file_path);
+b32  cye_file_exists(const char *file_path);
 bool cye_is_absolute(ZString path);                               // Check if path  is absolute
 bool cye_is_relative(ZString path);                               // Check if path  is relative
 bool cye_is_file(ZString path);                                   // Check if path  is regular  file
@@ -643,8 +661,9 @@ ZString cye_path_cwd(void);                                       //  Return cur
 ZString cye_path_parent(ZString path);                            //  Returns parent directory
 ZString cye_path_owner(ZString path);                             //  Returns parent directory
 ZString cye_path_stem(ZString path);                              //  Return path without extension
+ZString cye_path_dir_of(ZString file_path);                       //  Return directory where file is, if it's already an directory it return its self
 ZString cye_path_ext(ZString path);                               //  Returns only the extension
-ZString cye_path_touch(ZString path);                             //  Creates an empty file if not already exists
+bool    cye_path_touch(ZString path);                             //  Creates an empty file if not already exists
 
 #define cye_make_dir  cye_make_dir_if_not_exists                  // Create directory
 #define cye_make_dirs cye_make_dir_include_parents                // Create directory
@@ -1754,15 +1773,95 @@ ZString cye_path_base_name(ZString path) {
 #endif  // _WIN32
 }
 
-// Expand ~ and ~user
-ZString cye_expand_user(ZString path) {
-    cye_todo("VAI TRABALHAR VAGABUNDO");
+// Expand ~ and ~user to full home directory path
+// @Leak: maybe make temp? or provide the DString to write to
+// @Check: Sanity check every thing
+ZString cye_path_expand_user(ZString path) {
+    if (!path || path[0] != '~') return path;
+    
+    Cye_DString result = {0};
+    usz path_len = strlen(path);
+    
+#ifdef _WIN32
+    // On Windows, we'll only handle plain ~ (no ~user support)
+    if (path[1] != '\0' && path[1] != '/' && path[1] != '\\') {
+        return path;
+    }
+    
+    char home_path[MAX_PATH];
+    if (SUCCEEDED(SHGetFolderPathA(NULL, CSIDL_PROFILE, NULL, 0, home_path))) {
+        cye_ds_write(&result, home_path);
+        
+        // Add the rest of the path (skip the ~)
+        if (path[1] != '\0') {
+            // If path uses forward slashes, convert home_path backslashes to forward slashes
+            if (strchr(path, '/')) {
+                for (char* p = result.items; *p; p++) {
+                    if (*p == '\\') *p = '/';
+                }
+            }
+            cye_ds_write(&result, path + 1);
+        }
+        
+        return result.items;
+    }
+    
+    // Fallback to USERPROFILE environment variable
+    const char* user_profile = getenv("USERPROFILE");
+    if (user_profile) {
+        cye_ds_write(&result, user_profile);
+        if (path[1] != '\0') {
+            cye_ds_write(&result, path + 1);
+        }
+        return result.items;
+    }
+#else
+    // Find the end of the username or ~ if no username
+    const char* path_separator = strchr(path, '/');
+    usz username_len = path_separator ? (size_t)(path_separator - path - 1) :
+                         (path_len > 1 ? path_len - 1 : 0);
+    
+    const char* home_dir = NULL;
+    
+    if (username_len == 0) {
+        // Plain ~ - use current user's home
+        home_dir = getenv("HOME");
+        if (!home_dir) {
+            // Fallback to password database
+            struct passwd* pw = getpwuid(getuid());
+            if (pw) {
+                home_dir = pw->pw_dir;
+            }
+        }
+    } else {
+        // ~user - look up user in password database
+        char username[256];  // Reasonable max username length
+        if (username_len >= sizeof(username)) {
+            return path;  // Username too long
+        }
+        memcpy(username, path + 1, username_len);
+        username[username_len] = '\0';
+        
+        struct passwd* pw = getpwnam(username);
+        if (pw) {
+            home_dir = pw->pw_dir;
+        }
+    }
+    
+    if (home_dir) {
+        cye_ds_write(&result, home_dir);
+        if (path_separator) {
+            cye_ds_write(&result, path_separator);
+        }
+        return result.items;
+    }
+#endif
+    
+    // If all expansion attempts failed, return original path
+    return path;
 }
 
-// Expand environment variables
-ZString cye_expand_vars(ZString path) {
-    cye_todo("VAI TRABALHAR VAGABUNDO");
-}
+ZString cye_path_expand_vars(ZString path) { cye_panic("TODO");}
 
 int cye_needs_rebuild_from_buf(const char *output_path, const char **input_paths, usz input_paths_count) {
 #ifndef _WIN32
@@ -1874,9 +1973,8 @@ bool cye_path_set_cwd(const char *path) {
 }
 
 
-bool cye_file_exists(const char *file_path) {
+b32 cye_file_exists(const char *file_path) {
 #ifndef _WIN32
-
     struct stat statbuf;
     if (stat(file_path, &statbuf) < 0) {
         if (errno == ENOENT) return 0;
@@ -1941,9 +2039,80 @@ ZString cye_path_real(ZString path) {
     cye_todo("New Functions to Work on");
 }
 
+// Convert a normalized path to absolute path
+// Returns a newly allocated string containing the absolute path
+// Returns NULL on error
+// The returned string must be freed by the caller
+// TODO: For these Path functions we really should go the
+// Raylib TextFormat round of having 5~ buffers that cicles each time a functions is called
+// so the it endures 5~ times and if the user really wants to live long, it should make a copy.
 ZString cye_path_absolute(ZString path) {
-    cye_todo("New Functions to Work on");
+    if (!path) return NULL;
+    
+    Cye_DString result = {0};
+
+#ifdef _WIN32
+    // Handle Windows UNC paths specially
+    if (path[0] == '\\' && path[1] == '\\') {
+        ds_write(&result, path);
+        return result.items;
+    }
+    
+    char abs_path[MAX_PATH];
+    DWORD len = GetFullPathNameA(path, MAX_PATH, abs_path, NULL);
+    
+    if (len == 0 || len >= MAX_PATH) {
+        ds_free(&result);
+        return NULL;
+    }
+    
+    // Convert backslashes to forward slashes if the input used them
+    if (strchr(path, '/')) {
+        for (DWORD i = 0; i < len; i++) {
+            if (abs_path[i] == '\\') abs_path[i] = '/';
+        }
+    }
+    
+    cye_ds_write(&result, abs_path);
+    
+#else
+    char abs_path[PATH_MAX];
+    
+    if (path[0] == '/') {
+        // Path is already absolute
+        cye_ds_write(&result, path);
+    } else {
+        // Get current working directory first
+        if (!getcwd(abs_path, sizeof(abs_path))) {
+            return NULL;
+        }
+        
+        cye_ds_write(&result, abs_path);
+        
+        // Add separator if needed
+        if (result.count > 0 && result.items[result.count - 1] != '/') {
+            cye_ds_write(&result, "/");
+        }
+        
+        cye_ds_write(&result, path);
+    }
+    
+    // Clean up any . or .. in the path
+    char real_path[PATH_MAX];
+    if (realpath(result.items, real_path)) {
+        result.count = 0;
+        cye_ds_write(&result, real_path);
+    } else if (errno != ENOENT) {
+        // If error is not "file not exists", return error
+        // We allow non-existent paths as long as parent exists
+        cye_ds_free(result);
+        return NULL;
+    }
+#endif
+
+    return result.items;
 }
+
 //  Return relative path
 ZString cye_path_relative(ZString from, ZString target) {
     cye_todo("New Functions to Work on");
@@ -1972,14 +2141,137 @@ ZString cye_path_stem(ZString path) {
     cye_todo("New Functions to Work on");
 }
 
+
+//  NOTE: Its not just lexical dir_of, if a folder exists then we consider that
+// But maybe we just want lexical?
+// Return directory where file is, if it's already an directory it return its self
+ZString cye_path_dir_of(ZString file_path) {
+    if (!file_path) return NULL;
+
+    // If it's already a directory, return thyself
+    cye_threshold_log_level = CYE_LOG_NONE;
+    if (cye_path_file_type(file_path) == CYE_FILE_TYPE_DIRECTORY) {
+        return file_path;
+    }
+    cye_threshold_log_level = CYE_LOG_INFO;
+
+    // Get last separator position
+    ZString last_sep = NULL;
+    for (const char* p = file_path; *p; p++) {
+#ifdef _WIN32
+        if (*p == '\\' || *p == '/') {
+#else
+        if (*p == '/') {
+#endif
+            last_sep = (ZString)p;
+        }
+    }
+
+    if (!last_sep) {
+        // No separator found, return "." for current directory
+        return ".";
+    }
+
+    // Handle root directory cases
+#ifdef _WIN32
+    // Handle "C:\" case
+    if (last_sep == file_path + 2 && file_path[1] == ':') {
+        return file_path; // Return full path including root
+    }
+    // Handle "\\server\share\" case
+    if (file_path[0] == '\\' && file_path[1] == '\\') {
+        ZString p = file_path + 2;
+        int separators = 0;
+        while (*p) {
+            if (*p == '\\' || *p == '/') {
+                separators++;
+                if (separators == 2 && p == last_sep) {
+                    return file_path; // Return full UNC path
+                }
+            }
+            p++;
+        }
+    }
+#else
+    // Handle "/" case
+    if (last_sep == file_path) {
+        return "/";
+    }
+#endif
+
+    // Create a static buffer for the result
+    static char dir_buffer[CYE_PATH_MAX];
+    size_t len = last_sep - file_path;
+    
+    // Handle the case where the separator is the last character
+    if (last_sep[1] == '\0') {
+        // Copy the path up to and including the last separator
+        if (len >= CYE_PATH_MAX) len = CYE_PATH_MAX - 1;
+        memcpy(dir_buffer, file_path, len);
+        dir_buffer[len] = '\0';
+        return dir_buffer;
+    }
+
+    // Copy the path up to (but not including) the last separator
+    if (len >= CYE_PATH_MAX) len = CYE_PATH_MAX - 1;
+    memcpy(dir_buffer, file_path, len);
+    dir_buffer[len] = '\0';
+    return dir_buffer;
+}
+
+
 // Get only extension
 ZString cye_path_ext(ZString path) {
     cye_todo("New Functions to Work on");
 }
 
 // Get only extension
-ZString cye_path_touch(ZString path) {
-    cye_todo("New Functions to Work on");
+bool cye_path_touch(ZString path) {
+    // First check if file exists
+    struct stat st;
+    bool file_exists = (stat(path, &st) == 0);
+    
+    if (!file_exists) {
+        // Create the file if it doesn't exist
+#ifdef _WIN32
+        HANDLE h = CreateFileA(path, 
+                             GENERIC_WRITE, 
+                             FILE_SHARE_READ | FILE_SHARE_WRITE, 
+                             NULL, 
+                             CREATE_NEW, 
+                             FILE_ATTRIBUTE_NORMAL, 
+                             NULL);
+        if (h == INVALID_HANDLE_VALUE) {
+            // Check if file was created by another process
+            if (GetLastError() != ERROR_FILE_EXISTS) {
+                return false;
+            }
+            file_exists = true;
+        } else {
+            CloseHandle(h);
+        }
+#else
+        int fd = open(path, O_WRONLY | O_CREAT | O_NOCTTY | O_NONBLOCK, 0666);
+        if (fd < 0) {
+            // Check if file was created by another process
+            if (errno != EEXIST) {
+                return false;
+            }
+            file_exists = true;
+        } else {
+            close(fd);
+        }
+#endif
+    }
+    
+    // Update the timestamps
+    time_t current_time = time(NULL);
+    struct utimbuf new_times = {
+        .actime = current_time,   // Access time
+        .modtime = current_time   // Modification time
+    };
+    
+    return (utime(path, &new_times) == 0);
 }
 
 bool cye_make_dir_include_parents_from_tstr(TString path) {
@@ -2082,7 +2374,7 @@ bool cye_remove_file(ZString path) {
         return false;
     }
 
-    cye_trace_info("removed file `%s`", path);
+    cye_trace_info("Removed file `%s`", path);
     return true;
 
 }
@@ -2872,8 +3164,8 @@ char *nob_win32_error_message(DWORD err) {
 
 
 #define path_base_name                  cye_path_base_name
-#define expand_user                     cye_expand_user
-#define expand_vars                     cye_expand_vars
+#define path_expand_user                cye_path_expand_user
+#define path_expand_vars                cye_path_expand_vars
 
 #define needs_rebuild_from_buf          cye_needs_rebuild_from_buf
 #define needs_rebuild                   cye_needs_rebuild
@@ -2901,6 +3193,7 @@ char *nob_win32_error_message(DWORD err) {
 #define path_parent                     cye_path_parent
 #define path_owner                      cye_path_owner
 #define path_stem                       cye_path_stem
+#define path_dir_of                     cye_path_dir_of
 #define path_ext                        cye_path_ext
 #define path_touch                      cye_path_touch
 

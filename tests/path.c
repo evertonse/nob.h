@@ -1,10 +1,54 @@
 #define CYE_IMPLEMENTATION
 #include "cye.h"
-
 #include "shared.h"
 
 void test_path_others(void) {
+    
     assert_true(0 == strcmp(path_base_name("/home/64gb/senha.txt"), "senha.txt"));
+}
+
+void test_path_dir_of(void) {
+    // Test cases for both Windows and Unix paths
+    const char* test_paths[] = {
+        "/usr/local/bin/file",     // -> "/usr/local/bin"
+        "/usr/local/bin/",         // -> "/usr/local/bin"
+        "/usr/local/bin",          // -> "/usr/local/bin" (if directory)
+        "file.txt",                // -> "."
+        "./file.txt",              // -> "."
+        "../file.txt",             // -> ".."
+        "dir/file.txt",            // -> "dir"
+#ifdef _WIN32
+        "C:\\Windows\\System32\\file.exe",  // -> "C:\\Windows\\System32"
+        "C:\\Windows\\System32\\",          // -> "C:\\Windows\\System32"
+        "C:\\",                             // -> "C:\\"
+        "\\\\server\\share\\file.txt",      // -> "\\\\server\\share"
+        "\\\\server\\share\\",              // -> "\\\\server\\share"
+#endif
+        NULL
+    };
+
+    for (const char** path = test_paths; *path; path++) {
+        printf("Path: %s\nDir:  %s\n\n", *path, cye_path_dir_of(*path));
+    }
+}
+
+void test_path_absolute(void) {
+    
+    String_Slice path = str_slice_make(path_absolute("./senha.txt"));
+    trace_info(ss_fmt, ss_fmt_arg(path));
+
+    assert_true(str_slice_starts_with_zstr(path, "/home/"));
+    assert_true(str_slice_ends_with_zstr(path, "senha.txt"));
+}
+
+
+void test_expand_user(void) {
+
+    String_Slice user_expanded = str_slice_make(path_expand_user("~/senha.txt"));
+    trace_info(ss_fmt, ss_fmt_arg(user_expanded));
+
+    assert_true(str_slice_starts_with_zstr(user_expanded, "/home/"));
+    assert_true(str_slice_ends_with_zstr(user_expanded, "senha.txt"));
 }
 
 void test_path_create(void) {
@@ -136,6 +180,9 @@ void test_normalized(void) {
 }
 
 int main(void) {
+    test_path_dir_of();
+    test_path_absolute();
+    test_expand_user();
     test_path_others();
     test_normalized();
     test_path_create();
