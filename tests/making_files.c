@@ -3,8 +3,30 @@
 
 int main(void) {
     bool result = false;
-    ZString path = NULL;
     bool exists = false;
+
+    ZString path = NULL;
+
+    path = path_temp_create("build/lmao.txt");
+
+    if (!file_exists(path)) {
+        assert(make_dirs(path_dir_of(path)));
+        trace_info("Touching `%s` because it doesn't exist yet", path);
+        path_touch(path);
+    } else {
+        // Make the dirs required for it
+        File_Stats stats = {0};
+        trace_info("Touching `%s` anyways, even though it already exists", path);
+        {
+            file_stats(path, &stats);
+            trace_info("Stats BEFORE" file_stats_fmt, file_stats_fmt_arg(stats));
+
+            path_touch(path);
+
+            file_stats(path, &stats);
+            trace_info("Stats AFTER" file_stats_fmt, file_stats_fmt_arg(stats));
+        }
+    }
 
     {
         path = path_temp_create("./build///", "tmp", "file.txt");
@@ -25,7 +47,6 @@ int main(void) {
 
         remove_dir(path_dir_of(path));
     }
-    exit(1);
 
     return 0;
 }

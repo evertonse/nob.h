@@ -13,6 +13,7 @@ static const char* EXECUTABLE_EXTENSIONS[] = {".exe", ".com", ".bat", ".cmd"};
 
 #define ds_clear(ds) ds->count = 0
 
+// TODO: Move this into the library
 // Check if a path exists and is executable
 static bool is_executable(const char* path) {
 #ifdef _WIN32

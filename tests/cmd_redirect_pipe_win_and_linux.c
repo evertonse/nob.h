@@ -287,7 +287,6 @@ int test_pipe_tool(void) {
     }
 
     trace_info("OK");
-    exit(1);
 
 defer:
     cmd_free(cmd);
@@ -306,5 +305,4 @@ int main(int argc, char *argv[]) {
 
     test_cmd_capture();
     test_pipe_tool();
-    exit(1);
 }

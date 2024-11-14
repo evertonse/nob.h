@@ -21,7 +21,6 @@
 //----------------------------------------------------------------------------------
 
 #include <stdlib.h>
-#include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
 #include <errno.h>
@@ -31,6 +30,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <time.h>
+#include <stdio.h>
 
 
 #ifdef _WIN32
@@ -58,7 +58,6 @@
 #    include <fcntl.h>
 #    include <dirent.h>
 #    include <pwd.h>
-#    include <unistd.h>
 #    include <utime.h>
 #    include <errno.h>
 #    define PATH_SEPARATOR "/"
@@ -428,6 +427,14 @@ typedef enum {
 } Cye_File_Type;
 
 typedef struct {
+    time_t created_at;
+    time_t accessed_at;
+    time_t modified_at;
+    size_t size_bytes;
+} Cye_File_Stats;
+
+
+typedef struct {
     char* items;
     usz   count;
     usz   capacity;
@@ -640,6 +647,7 @@ TString cye_path_temp_cwd(void);                                  // Get current
 bool cye_path_set_cwd(const char *path);                          // Change current working directory
 
 b32  cye_file_exists(const char *file_path);
+bool cye_file_stats(const char* path, Cye_File_Stats* stats);     // Get file stats, can use ctime() to get certain fields as strings
 bool cye_is_absolute(ZString path);                               // Check if path  is absolute
 bool cye_is_relative(ZString path);                               // Check if path  is relative
 bool cye_is_file(ZString path);                                   // Check if path  is regular  file
@@ -970,6 +978,13 @@ void cye__assert_handler(char const *prefix, char const *condition, char const *
 
 #define cye_file_fmt "%s:%d:%s"
 #define cye_file_fmt_arg __FILE__, __LINE__,__PRETTY_FUNCTION__
+
+#define cye_file_stats_fmt "{.created_at=%s (%zu), .accessed_at=%s (%zu), .modified_at=%s (%zu), .size=%zu (bytes)}"
+#define cye_file_stats_fmt_arg(stats)                \
+    strtok(ctime(&(stats).created_at), "\n"),  (stats).created_at, \
+    strtok(ctime(&(stats).accessed_at), "\n"), (stats).accessed_at,\
+    strtok(ctime(&(stats).modified_at), "\n"), (stats).modified_at,\
+    (stats).size_bytes
 
 
 
@@ -1404,12 +1419,12 @@ void *cye_trealloc(void *ptr, usz size) {
             cye_trace_log(CYE_LOG_WARNING, "Reallocation returns exceeds CYE_TEMP_CAPACITY=%zu", CYE_TEMP_CAPACITY);
             return NULL;
         }
-        
+
         // Adjust total size
         cye_temp_data.size = ((byte*)ptr - cye_temp_data.buffer) + size;
         return ptr;
     }
-    
+
     // Otherwise, allocate new space. `talloc` already sets the last pointer
     void *new_ptr = cye_talloc(size);
     cye_trace_log(CYE_LOG_TRACE, "Reallocation done from different pointer from last allocation. (pointer=%p != last_pointer=%p)(new_ptr=%p)", ptr, cye_temp_data.last, new_ptr);
@@ -1778,20 +1793,20 @@ ZString cye_path_base_name(ZString path) {
 // @Check: Sanity check every thing
 ZString cye_path_expand_user(ZString path) {
     if (!path || path[0] != '~') return path;
-    
+
     Cye_DString result = {0};
     usz path_len = strlen(path);
-    
+
 #ifdef _WIN32
     // On Windows, we'll only handle plain ~ (no ~user support)
     if (path[1] != '\0' && path[1] != '/' && path[1] != '\\') {
         return path;
     }
-    
+
     char home_path[MAX_PATH];
     if (SUCCEEDED(SHGetFolderPathA(NULL, CSIDL_PROFILE, NULL, 0, home_path))) {
         cye_ds_write(&result, home_path);
-        
+
         // Add the rest of the path (skip the ~)
         if (path[1] != '\0') {
             // If path uses forward slashes, convert home_path backslashes to forward slashes
@@ -1802,10 +1817,10 @@ ZString cye_path_expand_user(ZString path) {
             }
             cye_ds_write(&result, path + 1);
         }
-        
+
         return result.items;
     }
-    
+
     // Fallback to USERPROFILE environment variable
     const char* user_profile = getenv("USERPROFILE");
     if (user_profile) {
@@ -1820,9 +1835,9 @@ ZString cye_path_expand_user(ZString path) {
     const char* path_separator = strchr(path, '/');
     usz username_len = path_separator ? (size_t)(path_separator - path - 1) :
                          (path_len > 1 ? path_len - 1 : 0);
-    
+
     const char* home_dir = NULL;
-    
+
     if (username_len == 0) {
         // Plain ~ - use current user's home
         home_dir = getenv("HOME");
@@ -1841,13 +1856,13 @@ ZString cye_path_expand_user(ZString path) {
         }
         memcpy(username, path + 1, username_len);
         username[username_len] = '\0';
-        
+
         struct passwd* pw = getpwnam(username);
         if (pw) {
             home_dir = pw->pw_dir;
         }
     }
-    
+
     if (home_dir) {
         cye_ds_write(&result, home_dir);
         if (path_separator) {
@@ -1856,7 +1871,7 @@ ZString cye_path_expand_user(ZString path) {
         return result.items;
     }
 #endif
-    
+
     // If all expansion attempts failed, return original path
     return path;
 }
@@ -1989,6 +2004,49 @@ b32 cye_file_exists(const char *file_path) {
 #endif
 }
 
+
+bool cye_file_stats(const char* path, Cye_File_Stats* stats) {
+#ifndef _WIN32
+    struct stat st;
+    if (stat(path, &st) != 0) {
+        return false;
+    }
+
+    stats->created_at = st.st_ctime;
+    stats->accessed_at = st.st_atime;
+    stats->modified_at = st.st_mtime;
+    stats->size_bytes = (size_t)st.st_size;
+
+    return true;
+#else
+    HANDLE file_handle = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (file_handle == INVALID_HANDLE_VALUE) {
+        return false;
+    }
+
+    FILETIME created, accessed, modified;
+    if (!GetFileTime(file_handle, &created, &accessed, &modified)) {
+        CloseHandle(file_handle);
+        return false;
+    }
+
+    LARGE_INTEGER size;
+    if (!GetFileSizeEx(file_handle, &size)) {
+        CloseHandle(file_handle);
+        return false;
+    }
+
+    CloseHandle(file_handle);
+
+    stats->created_at = ((ULARGE_INTEGER*)&created)->QuadPart / 10000000ULL - 11644473600ULL;
+    stats->accessed_at = ((ULARGE_INTEGER*)&accessed)->QuadPart / 10000000ULL - 11644473600ULL;
+    stats->modified_at = ((ULARGE_INTEGER*)&modified)->QuadPart / 10000000ULL - 11644473600ULL;
+    stats->size_bytes = (size_t)size.QuadPart;
+
+    return true;
+#endif
+}
+
 // Check if path is absolute
 bool cye_is_absolute(ZString path) {
     cye_todo("VAI TRABALHAR VAGABUNDO");
@@ -2048,7 +2106,7 @@ ZString cye_path_real(ZString path) {
 // so the it endures 5~ times and if the user really wants to live long, it should make a copy.
 ZString cye_path_absolute(ZString path) {
     if (!path) return NULL;
-    
+
     Cye_DString result = {0};
 
 #ifdef _WIN32
@@ -2057,27 +2115,27 @@ ZString cye_path_absolute(ZString path) {
         ds_write(&result, path);
         return result.items;
     }
-    
+
     char abs_path[MAX_PATH];
     DWORD len = GetFullPathNameA(path, MAX_PATH, abs_path, NULL);
-    
+
     if (len == 0 || len >= MAX_PATH) {
         ds_free(&result);
         return NULL;
     }
-    
+
     // Convert backslashes to forward slashes if the input used them
     if (strchr(path, '/')) {
         for (DWORD i = 0; i < len; i++) {
             if (abs_path[i] == '\\') abs_path[i] = '/';
         }
     }
-    
+
     cye_ds_write(&result, abs_path);
-    
+
 #else
     char abs_path[PATH_MAX];
-    
+
     if (path[0] == '/') {
         // Path is already absolute
         cye_ds_write(&result, path);
@@ -2086,17 +2144,17 @@ ZString cye_path_absolute(ZString path) {
         if (!getcwd(abs_path, sizeof(abs_path))) {
             return NULL;
         }
-        
+
         cye_ds_write(&result, abs_path);
-        
+
         // Add separator if needed
         if (result.count > 0 && result.items[result.count - 1] != '/') {
             cye_ds_write(&result, "/");
         }
-        
+
         cye_ds_write(&result, path);
     }
-    
+
     // Clean up any . or .. in the path
     char real_path[PATH_MAX];
     if (realpath(result.items, real_path)) {
@@ -2202,7 +2260,7 @@ ZString cye_path_dir_of(ZString file_path) {
     // Create a static buffer for the result
     static char dir_buffer[CYE_PATH_MAX];
     size_t len = last_sep - file_path;
-    
+
     // Handle the case where the separator is the last character
     if (last_sep[1] == '\0') {
         // Copy the path up to and including the last separator
@@ -2230,17 +2288,15 @@ bool cye_path_touch(ZString path) {
     // First check if file exists
     struct stat st;
     bool file_exists = (stat(path, &st) == 0);
-    
+
     if (!file_exists) {
         // Create the file if it doesn't exist
 #ifdef _WIN32
-        HANDLE h = CreateFileA(path, 
-                             GENERIC_WRITE, 
-                             FILE_SHARE_READ | FILE_SHARE_WRITE, 
-                             NULL, 
-                             CREATE_NEW, 
-                             FILE_ATTRIBUTE_NORMAL, 
-                             NULL);
+        HANDLE h = CreateFileA(
+            path,
+            GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, 
+            NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL
+        );
         if (h == INVALID_HANDLE_VALUE) {
             // Check if file was created by another process
             if (GetLastError() != ERROR_FILE_EXISTS) {
@@ -2263,14 +2319,14 @@ bool cye_path_touch(ZString path) {
         }
 #endif
     }
-    
+
     // Update the timestamps
     time_t current_time = time(NULL);
     struct utimbuf new_times = {
         .actime = current_time,   // Access time
         .modtime = current_time   // Modification time
     };
-    
+
     return (utime(path, &new_times) == 0);
 }
 
@@ -3071,6 +3127,7 @@ char *nob_win32_error_message(DWORD err) {
 #define DArray              Cye_DArray
 #define Path_DArray         Cye_Path_DArray
 #define File_Type           Cye_File_Type
+#define File_Stats          Cye_File_Stats
 #define DString             Cye_DString
 
 #define INVALID_PROCESS     CYE_INVALID_PROCESS
@@ -3174,6 +3231,7 @@ char *nob_win32_error_message(DWORD err) {
 #define path_set_cwd                    cye_path_set_cwd
 
 #define file_exists                     cye_file_exists
+#define file_stats                      cye_file_stats
 #define is_absolute                     cye_is_absolute
 #define is_relative                     cye_is_relative
 #define is_file                         cye_is_file
@@ -3332,6 +3390,9 @@ char *nob_win32_error_message(DWORD err) {
 
 #define file_fmt     cye_file_fmt
 #define file_fmt_arg cye_file_fmt_arg
+
+#define file_stats_fmt     cye_file_stats_fmt
+#define file_stats_fmt_arg cye_file_stats_fmt_arg
 
 #define cpu_architecture *cye_cpu_architecture
 

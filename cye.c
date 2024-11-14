@@ -3,6 +3,7 @@
 #include "shared.h"
 
 const char *test_names[] = {
+    "file_stats",
     "making_files",
     "path",
     "cmd_redirect_pipe_win_and_linux",
@@ -40,7 +41,7 @@ bool build_and_run_test(Command *cmd, const char *test_name) {
         return false;
     }
 
-    trace_info("--- %s finished ---", bin_path);
+    trace_okay("------------ %s finished ------------\n\n", bin_path);
     return true;
 }
 
