@@ -1,0 +1,1 @@
+- [ ] Sand-box any extensions being used and put it behind a flag

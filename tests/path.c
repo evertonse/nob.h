@@ -1,7 +1,7 @@
 #define CYE_IMPLEMENTATION
 #include "cye.h"
 
-#include "cye_shared.h"
+#include "shared.h"
 
 void test_path_others(void) {
     assert_true(0 == strcmp(path_base_name("/home/64gb/senha.txt"), "senha.txt"));

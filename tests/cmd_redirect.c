@@ -21,9 +21,9 @@ int main(void) {
     const char *message = "Hello";
 
     const char *message_file_path =
-        path_temp_create(BUILD_FOLDER, "echo_message.out");
+        path_temp_create(BUILD_FOLDER, "echo.out");
     const char *message_file_path_err =
-        path_temp_create(BUILD_FOLDER, "echo_message.err");
+        path_temp_create(BUILD_FOLDER, "echo.err");
 
     fh_out = file_open_for_write(message_file_path);
     if (fh_out == INVALID_FILE_HANDLE) {
@@ -69,7 +69,6 @@ int main(void) {
     }
 
     trace_info("OK");
-    exit(1);
 
 defer:
     cmd_free(cmd);

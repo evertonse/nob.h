@@ -20,7 +20,6 @@
 //  Basic Includes
 //----------------------------------------------------------------------------------
 
-#include <assert.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -82,15 +81,17 @@
 #   define offset_of(Type, element) ((isize) & (((Type *)0)->element))
 #endif
 
-#ifndef unused
+#ifndef fn_unused
 #   if defined(_MSC_VER)
-#       define unused(x) (__pragma(warning(suppress : 4100))(x))
+#       define fn_unused(x) (__pragma(warning(suppress : 4100))(x))
 #   elif defined(__GCC__)
-#       define unused(x) __attribute__((__unused__)) (x)
+#       define fn_unused(x) __attribute__((__unused__)) (x)
 #   else
-#       define unused(x) ((void)(size_of(x)))
+#       define fn_unused(x)
 #   endif
 #endif
+
+#define unused(x) ((void)(x))
 
 
 #ifndef kilobytes
@@ -114,6 +115,36 @@
 #       define force_noinline __declspec(noinline)
 #   endif
 #endif
+
+#if !defined(__cplusplus)
+#   if defined(_MSC_VER) && _MSC_VER <= 1800
+#       define inline __inline
+#   elif !defined(__STDC_VERSION__)
+#       define inline __inline__
+#   else
+#       define inline
+#   endif
+#endif
+
+#ifndef DEBUG_TRAP
+#   if defined(_MSC_VER)
+#      if _MSC_VER < 1300
+#          define DEBUG_TRAP() __asm int 3
+#      else
+#          define DEBUG_TRAP() __debugbreak()
+#      endif
+#   else
+#      define DEBUG_TRAP() __builtin_trap()
+#   endif
+#endif
+
+#ifndef static_assert // From: Odin gb.h
+#   define static_assert3(cond, msg) typedef char static_assertion_##msg[(!!(cond))*2-1]
+#   define static_assert2(cond, line) static_assert3(cond, static_assertion_at_line_##line)
+#   define static_assert1(cond, line) static_assert2(cond, line)
+#   define static_assert(cond)        static_assert1(cond, __LINE__)
+#endif
+
 
 #if defined(__GNUC__) || defined(__GNUG__)
 #   define force_restrict __restrict__
@@ -234,15 +265,6 @@
 //  Tweakable Constants
 //----------------------------------------------------------------------------------
 
-// Consider using logging instead ? Maybe not
-#define cye_todo(msg)        do { fprintf(stderr, "%s:%d: %s TODO: %s\n",       __FILE__, __LINE__,__PRETTY_FUNCTION__,  msg); abort(); } while(0)
-#define cye_unreachable(msg) do { fprintf(stderr, "%s:%d: %s UNREACHABLE: %s\n",__FILE__, __LINE__,__PRETTY_FUNCTION__,  msg); abort(); } while(0)
-#define cye_panic(msg)       do { fprintf(stderr, "%s:%d: %s PANIC: " msg "\n",__FILE__, __LINE__,__PRETTY_FUNCTION__); abort(); } while(0)
-#define cye_not_implemented(msg) assert(0 && msg "Not Implemented.")
-#define cye_shift(items, items_sz)  (assert((items_sz) > 0 && "Shift WAY TOO MUCH"), (items_sz)--, *(items)++)
-#define cye_file_fmt "%s:%d:%s PANIC: "
-#define cye_file_fmt_arg __FILE__, __LINE__,__PRETTY_FUNCTION__
-
 #ifdef _WIN32
 #    define CYE_END_OF_LINE "\r\n"
 #    define CYE_PATH_SEPARATOR "\\"
@@ -329,15 +351,22 @@ typedef void        u0;
 typedef void*       rawptr;
 
 // Unsigned Integers
-typedef int64_t     i64;
-typedef int32_t     i32;
-typedef int16_t     i16;
-typedef int8_t      i8;
-typedef size_t      usz;
-typedef ptrdiff_t   isz;
+typedef int64_t      i64;
+typedef int32_t      i32;
+typedef int16_t      i16;
+typedef int8_t       i8;
+typedef size_t       usz;
+typedef ptrdiff_t    isz;
 
-typedef size_t      usize;
-typedef ptrdiff_t   isize;
+typedef size_t       usize;
+typedef ptrdiff_t    isize;
+
+typedef i32          rune;
+#define RUNE_INVALID as(Rune)(0xfffd)
+#define RUNE_MAX     as(Rune)(0x0010ffff)
+#define RUNE_BOM     as(Rune)(0xfeff)
+#define RUNE_EOF     as(Rune)(-1)
+
 
 typedef const char* ZString; // Static Zero Terminated String
 typedef       char* TString; // Temporary String
@@ -521,7 +550,8 @@ void cye__rebuild_ourselves(ZString source_path, int argc, ZString *argv);
 
 Cye_Context cye_temp_context(void);
 Cye_Context cye_default_context(void);
-u0          cye_set_default_context(Cye_Context ctx);
+
+u0 cye_set_default_context(Cye_Context ctx);
 
 char* cye_tstrdup(const char *cstr);
 void* cye_talloc(usz size);
@@ -619,7 +649,8 @@ ZString cye_path_stem(ZString path);                              //  Return pat
 ZString cye_path_ext(ZString path);                               //  Returns only the extension
 ZString cye_path_touch(ZString path);                             //  Creates an empty file if not already exists
 
-#define cye_make_dir cye_make_dir_if_not_exists                   // Create directory
+#define cye_make_dir  cye_make_dir_if_not_exists                  // Create directory
+#define cye_make_dirs cye_make_dir_include_parents                // Create directory
 bool cye_make_dir_include_parents(ZString path);                  // Create directories including parents as needed
 bool cye_make_dir_include_parents_from_tstr(TString path);        // Create directories recursively
 
@@ -654,7 +685,7 @@ Cye_Path_DArray cye_path_scandir(ZString path);                   // Iterator of
             (da)->items = cye_context.realloc(                                             \
                 (da)->items, (da)->capacity*sizeof(((da)->items)[0])                       \
             );                                                                             \
-            assert((da)->items != NULL && "Dynamic Array: OOM");                           \
+            cye_assert((da)->items != NULL && "Dynamic Array: OOM");                       \
         }                                                                                  \
                                                                                            \
         (da)->items[(da)->count++] = (item);                                               \
@@ -672,7 +703,7 @@ Cye_Path_DArray cye_path_scandir(ZString path);                   // Iterator of
                 (da)->capacity *= CYE_DARRAY_CAP_MULTIPLIER;                                    \
             }                                                                                   \
             (da)->items = cye_context.realloc((da)->items, (da)->capacity*sizeof(*(da)->items));\
-            assert((da)->items != NULL && "Dynamic Array: OOM");                                \
+            cye_assert((da)->items != NULL && "Dynamic Array: OOM");                            \
         }                                                                                       \
         memcpy((da)->items + (da)->count, (new_items), (new_items_count)*sizeof(*(da)->items)); \
         (da)->count += (new_items_count);                                                       \
@@ -814,8 +845,9 @@ bool cye_zstr_starts_with(ZString src, ZString prefix);
 //  Dynamic String Declarations
 //----------------------------------------------------------------------------------
 
-#define cye_ds_fmt "{.items=%s, .count=%zu, .capacity=%zu}"
-#define cye_ds_fmt_arg(ds) (ds).items, (ds).count, (ds).capacity
+// Don't need to null terminate to see the dynamic string
+#define cye_ds_fmt "{.items=%.*s(%p), .count=%zu, .capacity=%zu}"
+#define cye_ds_fmt_arg(ds) (ds).count, (ds).items, (ds).items, (ds).count, (ds).capacity
 
 #define cye_ds_write_buf(ds, buf, size) cye_da_append_many(ds, buf, size)
 
@@ -885,6 +917,7 @@ int cye_float_equals(f32 x, f32 y);
 //------------------------------------------------------------------------------------
 //  Utils Declarations
 //------------------------------------------------------------------------------------
+void cye_set_trace_level(Cye_Log_Level level);
 void cye_trace_log(Cye_Log_Level level, const char *fmt, ...);
 #define cye_trace_info(...)  cye_trace_log(CYE_LOG_INFO,    __VA_ARGS__)
 #define cye_trace_okay(...)  cye_trace_log(CYE_LOG_OKAY,    __VA_ARGS__)
@@ -894,6 +927,33 @@ void cye_trace_log(Cye_Log_Level level, const char *fmt, ...);
 
 #define cye_return_defer(code) do { code; goto defer; } while(0)
 #define cye_result_defer(value) do { result = (value); goto defer; } while(0)
+
+// Consider using logging instead ? Maybe not
+#define cye_todo(msg)        do { fprintf(stderr, "%s:%d: %s TODO: %s\n",       __FILE__, __LINE__,__PRETTY_FUNCTION__,  msg); abort(); } while(0)
+#define cye_unreachable(msg) do { fprintf(stderr, "%s:%d: %s UNREACHABLE: %s\n",__FILE__, __LINE__,__PRETTY_FUNCTION__,  msg); abort(); } while(0)
+#define cye_panic(msg)       do { fprintf(stderr, "%s:%d: %s PANIC: " msg "\n",__FILE__, __LINE__,__PRETTY_FUNCTION__); abort(); } while(0)
+
+#define cye_not_implemented(msg)    cye_assert_msg(false, msg)
+
+#define cye_shift(items, items_sz)  (cye_assert_msg(((items_sz) > 0), "%s", "Shift WAY TOO MUCH"), (items_sz) -= 1, *(items)++)
+
+void cye__assert_handler(char const *prefix, char const *condition, char const *file, int line, char const *msg, ...);
+
+#ifndef cye_assert_msg
+#define cye_assert_msg(cond, msg, ...) \
+    ((void)((cond) || \
+        (cye__assert_handler("Assertion Failure", #cond, __FILE__, \
+                          (int)__LINE__, msg, ##__VA_ARGS__), \
+         DEBUG_TRAP(), \
+         0)))
+#endif
+
+#ifndef cye_assert
+#   define cye_assert(cond) cye_assert_msg(cond, NULL)
+#endif
+
+#define cye_file_fmt "%s:%d:%s"
+#define cye_file_fmt_arg __FILE__, __LINE__,__PRETTY_FUNCTION__
 
 
 
@@ -917,6 +977,7 @@ const char *cye_cpu_architecture(void);
 
 static struct {
     usz size;
+    rawptr last;  // Last pointer of a successful allocation, used in `trealloc`
     byte buffer[CYE_TEMP_CAPACITY];
 } cye_temp_data = {0};
 
@@ -1222,7 +1283,7 @@ void cye__rebuild_ourselves(ZString source_path, int argc, ZString *argv) {
     }
 #endif
 
-    int rebuild_is_needed = cye_needs_rebuild1(binary_path, source_path);
+    int rebuild_is_needed = cye_needs_rebuild_spread(binary_path, source_path, __FILE__);
     if (rebuild_is_needed < 0) {
         exit(1);
     }
@@ -1269,13 +1330,14 @@ Cye_Context cye_default_context(void) {
 }
 
 u0 cye_set_default_context(Cye_Context ctx) {
+    unused(ctx);
     cye_panic("YAY");
 }
 
 TString cye_tstrdup(const char *cstr) {
     usz n = strlen(cstr);
     TString result = (TString)cye_talloc(n + 1);
-    assert(result != NULL && "Please increase CYE_TEMP_CAPACITY");
+    cye_assert(result != NULL && "Please increase CYE_TEMP_CAPACITY");
     memcpy(result, cstr, n);
     result[n] = '\0';
     return result;
@@ -1287,14 +1349,67 @@ rawptr cye_talloc(usz size) {
 
     if (cye_temp_data.size + size > CYE_TEMP_CAPACITY) return NULL;
     rawptr result = &cye_temp_data.buffer[cye_temp_data.size];
+    cye_temp_data.last  = result;
     cye_temp_data.size += size;
     return result;
 }
 
 void *cye_trealloc(void *ptr, usz size) {
-    unused(ptr);
-    // Fragmentation, but who cares
-    return cye_talloc(size);
+    if (ptr == null) {
+        // `talloc` already sets the last pointer
+        return cye_talloc(size);
+    }
+
+    if (size == 0) {
+        return null;
+    }
+    // If ptr is NULL or it's not from our temp buffer, just do a new allocation
+    if ((byte*)ptr <   cye_temp_data.buffer
+     || (byte*)ptr >= (cye_temp_data.buffer + CYE_TEMP_CAPACITY))
+    {
+        cye_trace_fatal(
+            "Trying to realloc investigate this behaviour"
+            "You might have allocate with one context than changed the context and reallocated with something else"
+            "This might indicate that you need to either note realloc instead to the memcpy your self since you probably already"
+            "know how much data the pointer points to. (temporary allocator does not)"
+        );
+        cye_unreachable("FATAL"); // Maybe it shouldn't be? But good for me to find bugs
+
+        // `talloc` already sets the last pointer
+        return cye_talloc(size);;
+    }
+
+    // Check if ptr is the last allocation by seeing if it points to
+    // the position right after our previous allocations
+    if (ptr == cye_temp_data.last) {
+        cye_trace_log(CYE_LOG_TRACE, "Reallocation done on pointer from last allocation");
+        // Make sure we don't exceed buffer capacity
+        if ((byte*)ptr + size > cye_temp_data.buffer + CYE_TEMP_CAPACITY) {
+            cye_trace_log(CYE_LOG_WARNING, "Reallocation returns exceeds CYE_TEMP_CAPACITY=%zu", CYE_TEMP_CAPACITY);
+            return NULL;
+        }
+        
+        // Adjust total size
+        cye_temp_data.size = ((byte*)ptr - cye_temp_data.buffer) + size;
+        return ptr;
+    }
+    
+    // Otherwise, allocate new space. `talloc` already sets the last pointer
+    void *new_ptr = cye_talloc(size);
+    cye_trace_log(CYE_LOG_TRACE, "Reallocation done from different pointer from last allocation. (pointer=%p != last_pointer=%p)(new_ptr=%p)", ptr, cye_temp_data.last, new_ptr);
+    if (new_ptr) {
+        // Calculate how much data we can safely copy, techinacally should be all of it
+        // Because talloc doesn't let us allocate partially, but whatever
+        usz remaining_space = cye_temp_data.buffer + CYE_TEMP_CAPACITY - (byte*)ptr;
+        usz copy_size = size;
+        if (size > remaining_space) {
+            copy_size = remaining_space;
+            cye_trace_warn("Wanted %zu bytes but can only give %zu to not exceed %d CYE_TEMP_CAPACITY", size, remaining_space, CYE_TEMP_CAPACITY);
+        }
+        memcpy(new_ptr, ptr, copy_size);
+    }
+
+    return new_ptr;
 }
 
 void cye_tfree(rawptr ptr) {
@@ -1309,10 +1424,10 @@ TString cye_tprintf(ZString fmt, ...) {
     va_end(args);
 
 
-    assert(n >= 0);
+    cye_assert(n >= 0);
     char *result = cye_talloc(n + 1);
 
-    assert(result != NULL && "Extend the size of the temporary allocator");
+    cye_assert(result != NULL && "Extend the size of the temporary allocator");
 
     // TODO: use proper arenas for the temporary allocator;
     va_start(args, fmt);
@@ -1474,7 +1589,7 @@ bool cye_read_entire_file(const char *path, Cye_DString *ds) {
     usz new_count = ds->count + m;
     if (new_count > ds->capacity) {
         ds->items = cye_context.realloc(ds->items, new_count);
-        assert(ds->items != NULL && "Please, you'll need to acquire more random access memory ");
+        cye_assert(ds->items != NULL && "Please, you'll need to acquire more random access memory ");
         ds->capacity = new_count;
     }
 
@@ -2358,7 +2473,6 @@ static int cye_count_non_scaped_percent(ZString s) {
         i++;
     }
     return count;
-
 }
 
 void cye_ds_printf(Cye_DString *ds, ZString fmt, ...) {
@@ -2369,11 +2483,11 @@ void cye_ds_printf(Cye_DString *ds, ZString fmt, ...) {
     int n = vsnprintf(NULL, 0, fmt, args);
     va_end(args);
 
-    assert(n >= 0);
+    cye_assert(n >= 0);
     usz chk_point = cye_temp_save();
     char *result = cye_talloc(n + 1);
 
-    assert(result != NULL && "Extend the size of the temporary allocator");
+    cye_assert(result != NULL && "Extend the size of the temporary allocator");
 
     va_start(args, fmt);
     vsnprintf(result, n + 1, fmt, args);
@@ -2449,8 +2563,12 @@ int cye_float_equals(f32 x, f32 y) {
 }
 
 //------------------------------------------------------------------------------------
-//  Utils Functions Implemenetation
+//  Utils Implemenetation
 //------------------------------------------------------------------------------------
+
+void cye_set_trace_level(Cye_Log_Level level) {
+    cye_threshold_log_level = level;
+}
 
 // TODO: Add colors from nabs.h
 void cye_trace_log(Cye_Log_Level level, const char *fmt, ...) {
@@ -2497,7 +2615,7 @@ void cye_trace_log(Cye_Log_Level level, const char *fmt, ...) {
         case CYE_LOG_INFO:    written = snprintf(buffer, max_len, "%sINFO%s%s:  ", color, reset, bold); break;
         case CYE_LOG_OKAY:    written = snprintf(buffer, max_len, "%sOKAY%s%s:  ", color, reset, bold); break;
         case CYE_LOG_WARNING: written = snprintf(buffer, max_len, "%sWARN%s%s:  ", color, reset, bold); break;
-        case CYE_TRACE_ERROR:   written = snprintf(buffer, max_len, "%sERROR%s%s: ", color, reset, bold); break;
+        case CYE_TRACE_ERROR: written = snprintf(buffer, max_len, "%sERROR%s%s: ", color, reset, bold); break;
         case CYE_LOG_FATAL:   written = snprintf(buffer, max_len, "%sFATAL%s%s: ", color, reset, bold); break;
         case CYE_LOG_ALL:     written = snprintf(buffer, max_len, "%sALL%s%s:   ", color, reset, bold); break;
         case CYE_LOG_NONE:    return;
@@ -2525,6 +2643,20 @@ void cye_trace_log(Cye_Log_Level level, const char *fmt, ...) {
     if (CYE_LOG_FATAL == level) {
         exit(EXIT_FAILURE);
     }
+}
+
+void cye__assert_handler(char const *prefix, char const *condition, char const *file, int line, char const *msg, ...) {
+    fprintf(stderr, "%s:%d: %s: ", file, line, prefix);
+    if (condition) {
+        fprintf(stderr, "`%s` ", condition);
+    }
+    if (msg) {
+        va_list va;
+        va_start(va, msg);
+        vfprintf(stderr, msg, va);
+        va_end(va);
+    }
+    fprintf(stderr, "\n");
 }
 
 const char *cye_cpu_architecture() {
@@ -2630,13 +2762,7 @@ char *nob_win32_error_message(DWORD err) {
 //  Tweakable Constants Short Names
 //----------------------------------------------------------------------------------
 
-#define todo            cye_todo
-#define unreachable     cye_unreachable
-#define not_implemented cye_not_implemented
-#define shift           cye_shift
-
-#define file_fmt        cye_file_fmt
-#define file_fmt_arg    cye_file_fmt_arg
+// NOTE: Does it make sense to shorten these?
 
 //----------------------------------------------------------------------------------
 //  Structures Definition with Prefix Short Names
@@ -2723,6 +2849,7 @@ char *nob_win32_error_message(DWORD err) {
 
 #define tstrdup     cye_tstrdup
 #define talloc      cye_talloc
+#define trealloc    cye_trealloc
 #define tprintf     cye_tprintf
 
 #define temp_reset  cye_temp_reset
@@ -2782,6 +2909,7 @@ char *nob_win32_error_message(DWORD err) {
 #define path_touch                      cye_path_touch
 
 #define make_dir                           cye_make_dir
+#define make_dirs                          cye_make_dirs
 #define make_dir_include_parents           cye_make_dir_include_parents
 #define make_dir_include_parents_from_tstr cye_make_dir_include_parents_from_tstr
 #define remove_file                        cye_remove_file
@@ -2892,15 +3020,29 @@ char *nob_win32_error_message(DWORD err) {
 //  Utils Short Names
 //------------------------------------------------------------------------------------
 
-#define trace_log   cye_trace_log
-#define trace_info  cye_trace_info
-#define trace_okay  cye_trace_okay
-#define trace_error cye_trace_error
-#define trace_warn  cye_trace_warn
-#define trace_fatal cye_trace_fatal
+#define set_trace_level cye_set_trace_level
+#define trace_log       cye_trace_log
+#define trace_info      cye_trace_info
+#define trace_okay      cye_trace_okay
+#define trace_error     cye_trace_error
+#define trace_warn      cye_trace_warn
+#define trace_fatal     cye_trace_fatal
 
 #define return_defer cye_return_defer
 #define result_defer cye_result_defer
+
+// Consider using logging instead ? Maybe not
+#define todo            cye_todo
+#define unreachable     cye_unreachable
+#define panic           cye_panic
+#define not_implemented cye_not_implemented
+#define shift           cye_shift
+
+#define assert_msg cye_assert_msg
+#define assert cye_assert
+
+#define file_fmt     cye_file_fmt
+#define file_fmt_arg cye_file_fmt_arg
 
 #define cpu_architecture *cye_cpu_architecture
 

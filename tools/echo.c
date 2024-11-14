@@ -1,3 +1,4 @@
+#define CYE_IMPLEMENTATION
 #include "cye.h"
 
 int main(int argc, char **argv) {

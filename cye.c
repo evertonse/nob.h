@@ -1,9 +1,11 @@
-
 #define CYE_IMPLEMENTATION
 #include "cye.h"
 #include "shared.h"
 
 const char *test_names[] = {
+    "cmd_redirect_pipe",
+    "temporary_storage_realloc",
+    "temporary_storage",
     "cmd_redirect",
     "slice",
     "path",
@@ -11,11 +13,10 @@ const char *test_names[] = {
     "current_dir",
     "dynamic_string",
     "minimal_log_level",
-    "temporary_storage",
-//     "nob_sv_end_with",
 // #ifdef _WIN32
 //     "win32_error",
 // #endif //_WIN32
+    "assertion", // must be last
 };
 
 #define test_names_count count_of(test_names)
@@ -50,8 +51,8 @@ int main(int argc, const char **argv) {
     const char *command_name = "test";
     if (argc > 0) command_name = shift(argv, argc);
 
-    if (!make_dir(BUILD_FOLDER TESTS_FOLDER)) return 1;
-    if (!make_dir(BUILD_FOLDER TOOLS_FOLDER)) return 1;
+    if (!make_dirs(BUILD_FOLDER TESTS_FOLDER)) return 1;
+    if (!make_dirs(BUILD_FOLDER TOOLS_FOLDER)) return 1;
 
     if (0 == strcmp(command_name, "test")) {
         if (argc <= 0) {

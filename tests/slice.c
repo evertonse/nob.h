@@ -89,7 +89,7 @@ void example(void) {
     char arr[] = {'h', 'e', 'l', 'l', 'o'};
     String_Slice a = slice_from_arr(arr);
     String_Slice b = str_slice_make("hello");
-    bool equal = str_slice_equal(a, b);  // true
+    bool equal = str_slice_equals(a, b);  // true
     if (equal) {
         trace_okay("a="ss_fmt "does equals b="ss_fmt, ss_fmt_arg(a), ss_fmt_arg(b));
     } else {
@@ -139,8 +139,8 @@ void run_tests(void) {
         String_Slice s1 = slice_make(test1, strlen(test1));
         String_Slice s2 = slice_make(test2, strlen(test2));
         String_Slice s3 = slice_make(test3, strlen(test3));
-        assert(str_slice_equal(s1, s2));
-        assert(!str_slice_equal(s1, s3));
+        assert(str_slice_equals(s1, s2));
+        assert(!str_slice_equals(s1, s3));
         trace_log(LOG_OKAY, "Equal test passed");
     }
 
@@ -217,21 +217,21 @@ void run_tests(void) {
     }
 }
 
-#include "cye_shared.h"
+#include "shared.h"
 
 u0 another(void) {
     String_Slice ss1 = str_slice_make("./example.exe");
     String_Slice ss2 = str_slice_make("");
 
-    assert_true("str_slice_ends_with(ss1,  \"./example.exe\")",        str_slice_ends_with_zstr(ss1, "./example.exe"));
-    assert_true("str_slice_ends_with(ss1,  \".exe\")",                 str_slice_ends_with_zstr(ss1, ".exe"));
-    assert_true("str_slice_ends_with(ss1,  \"e\")",                    str_slice_ends_with_zstr(ss1, "e"));
-    assert_true("str_slice_ends_with(ss1,  \"\")",                     str_slice_ends_with_zstr(ss1, ""));
-    assert_true("str_slice_ends_with(ss2,  \"\")",                     str_slice_ends_with_zstr(ss2, ""));
+    assert_true(str_slice_ends_with_zstr(ss1, "./example.exe"));
+    assert_true(str_slice_ends_with_zstr(ss1, ".exe"));
+    assert_true(str_slice_ends_with_zstr(ss1, "e"));
+    assert_true(str_slice_ends_with_zstr(ss1, ""));
+    assert_true(str_slice_ends_with_zstr(ss2, ""));
 
-    assert_false("str_slice_ends_with(ss1, \".png\")",                 str_slice_ends_with_zstr(ss1, ".png"));
-    assert_false("str_slice_ends_with(ss1, \"/path/to/example.exe\")", str_slice_ends_with_zstr(ss1, "/path/to/example.exe"));
-    assert_false("str_slice_ends_with(ss2, \".obj\")",                 str_slice_ends_with_zstr(ss2, ".obj"));
+    assert_false(str_slice_ends_with_zstr(ss1, ".png"));
+    assert_false(str_slice_ends_with_zstr(ss1, "/path/to/example.exe"));
+    assert_false(str_slice_ends_with_zstr(ss2, ".obj"));
 
 }
 
