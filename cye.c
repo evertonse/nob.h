@@ -3,6 +3,7 @@
 #include "shared.h"
 
 const char *test_names[] = {
+    "cmd_redirect_pipe_win_and_linux",
     "cmd_redirect_pipe",
     "temporary_storage_realloc",
     "temporary_storage",

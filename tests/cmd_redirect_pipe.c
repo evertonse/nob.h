@@ -106,7 +106,6 @@ int main(void) {
     }
 
     trace_info("OK");
-    exit(1);
 
 defer:
     cmd_free(cmd);
