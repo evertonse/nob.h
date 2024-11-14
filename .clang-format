@@ -8,4 +8,4 @@ AllowShortBlocksOnASingleLine: false
 AllowShortCaseLabelsOnASingleLine: false
 AllowShortIfStatementsOnASingleLine: false
 InsertBraces: true
-ColumnLimit: 420 
+ColumnLimit: 420

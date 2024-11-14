@@ -573,6 +573,8 @@ void cye__rebuild_ourselves(ZString source_path, int argc, ZString *argv);
 //  Storage Declarations
 //------------------------------------------------------------------------------------
 
+
+
 Cye_Context cye_temp_context(void);
 Cye_Context cye_default_context(void);
 
@@ -690,13 +692,17 @@ Cye_Path_DArray cye_path_scandir(ZString path);                   // Iterator of
 
 // bool cye_path_walk                                              // Generate directory tree
 
+#define cye_file_stats_fmt "{.created_at=%s (%zu), .accessed_at=%s (%zu), .modified_at=%s (%zu), .size=%zu (bytes)}"
+#define cye_file_stats_fmt_arg(stats)                \
+    strtok(ctime(&(stats).created_at), "\n"),  (stats).created_at, \
+    strtok(ctime(&(stats).accessed_at), "\n"), (stats).accessed_at,\
+    strtok(ctime(&(stats).modified_at), "\n"), (stats).modified_at,\
+    (stats).size_bytes
 
 //------------------------------------------------------------------------------------
 //  Dynamic Array Declarations
 //------------------------------------------------------------------------------------
 
-#define cye_da_fmt         "{.count=%zu, .capacity=%zu}"
-#define cye_da_fmt_arg(da) (da).count,   (da).capacity
 
 // Append an item to a dynamic array using thread_local Cye_Context cye_context
 #define cye_da_append(da, item)                                                            \
@@ -733,14 +739,14 @@ Cye_Path_DArray cye_path_scandir(ZString path);                   // Iterator of
         (da)->count += (new_items_count);                                                       \
     } while (0)
 
+#define cye_da_fmt         "{.count=%zu, .capacity=%zu}"
+#define cye_da_fmt_arg(da) (da).count,   (da).capacity
 
 //------------------------------------------------------------------------------------
 //  Slices Declarations
 //------------------------------------------------------------------------------------
 
 
-#define cye_slice_fmt "{.data=%p, .count=%zu}"
-#define cye_slice_fmt_arg(slice)  slice.data, slice.count
 // Generic slice structure
 #define Cye_Slice(T) struct { T data; usz count; }
 
@@ -805,13 +811,13 @@ Cye_Path_DArray cye_path_scandir(ZString path);                   // Iterator of
     } \
     idx; \
 })
+#define cye_slice_fmt "{.data=%p, .count=%zu}"
+#define cye_slice_fmt_arg(slice)  slice.data, slice.count
 
 //------------------------------------------------------------------------------------
 //  String Slice Declarations
 //------------------------------------------------------------------------------------
 
-#define cye_ss_fmt "%.*s"
-#define cye_ss_fmt_arg(sv) (int)(sv).count, (sv).data
 
 
 Cye_String_Slice cye_str_slice_make(const char *str);
@@ -864,14 +870,14 @@ bool cye_zstr_starts_with(ZString src, ZString prefix);
 
 // TODO: Add String Slices Functions as we need
 
+#define cye_ss_fmt "%.*s"
+#define cye_ss_fmt_arg(sv) (int)(sv).count, (sv).data
 
 //----------------------------------------------------------------------------------
 //  Dynamic String Declarations
 //----------------------------------------------------------------------------------
 
 // Don't need to null terminate to see the dynamic string
-#define cye_ds_fmt "{.items=%.*s(%p), .count=%zu, .capacity=%zu}"
-#define cye_ds_fmt_arg(ds) (ds).count, (ds).items, (ds).items, (ds).count, (ds).capacity
 
 #define cye_ds_write_buf(ds, buf, size) cye_da_append_many(ds, buf, size)
 
@@ -908,6 +914,8 @@ bool cye_zstr_starts_with(ZString src, ZString prefix);
 void cye_ds_printf(Cye_DString *ds, ZString fmt, ...);
 
 
+#define cye_ds_fmt "{.items=%.*s(%p), .count=%zu, .capacity=%zu}"
+#define cye_ds_fmt_arg(ds) (ds).count, (ds).items, (ds).items, (ds).count, (ds).capacity
 //----------------------------------------------------------------------------------
 //  Mathematics Declarations
 //----------------------------------------------------------------------------------
@@ -976,17 +984,75 @@ void cye__assert_handler(char const *prefix, char const *condition, char const *
 #   define cye_assert(cond) cye_assert_msg(cond, NULL)
 #endif
 
+
 #define cye_file_fmt "%s:%d:%s"
 #define cye_file_fmt_arg __FILE__, __LINE__,__PRETTY_FUNCTION__
 
-#define cye_file_stats_fmt "{.created_at=%s (%zu), .accessed_at=%s (%zu), .modified_at=%s (%zu), .size=%zu (bytes)}"
-#define cye_file_stats_fmt_arg(stats)                \
-    strtok(ctime(&(stats).created_at), "\n"),  (stats).created_at, \
-    strtok(ctime(&(stats).accessed_at), "\n"), (stats).accessed_at,\
-    strtok(ctime(&(stats).modified_at), "\n"), (stats).modified_at,\
-    (stats).size_bytes
 
 
+// NOTE: C11 I think
+#define cye_fmt(val) \
+  _Generic((val),                           \
+    Cye_String_Slice  : cye_ss_fmt,         \
+    Cye_File_Stats    : cye_file_stats_fmt, \
+    Cye_DString       : cye_ds_fmt,         \
+    _Bool             : "%d",               \
+    char              : "%c",               \
+    signed char       : "%hhd",             \
+    unsigned char     : "%hhu",             \
+    short             : "%hd",              \
+    int               : "%d",               \
+    long              : "%ld",              \
+    long long         : "%lld",             \
+    unsigned short    : "%hu",              \
+    unsigned int      : "%u",               \
+    unsigned long     : "%lu",              \
+    unsigned long long: "%llu",             \
+    float             : "%f",               \
+    double            : "%f",               \
+    long double       : "%Lf",              \
+    char*             : "%s",               \
+    char const*       : "%s",               \
+    wchar_t*          : "%ls",              \
+    wchar_t const*    : "%ls",              \
+    void*             : "%p",               \
+    void const*       : "%p",               \
+    default           : "%s"                \
+  )
+
+
+// This one can't be don't because _Generic only allows expressions
+#if 0
+// Does not work, ok? But might serve as inspiration of revising 
+// for another possible solution for now, just use tstring or
+// .*fmt_arg directly
+#define cye__fmt_arg(val)                                   \
+  _Generic((val),                                           \
+    Cye_String_Slice : cye_ss_fmt_arg,                      \
+    Cye_File_Stats   : cye_file_stats_fmt_arg,              \
+    Cye_DString      : cye_ds_fmt_arg,                      \
+    default          : "(_Generic: unknown type)"           \
+  )
+
+#define cye_fmt_arg(val) cye__fmt_arg((val))((val))
+#endif
+
+
+// These `tstring` functions should alwasy allocated new memory
+// no matter if we already have some modifiable buffer like DString case
+TString cye_file_stats_tstring(Cye_File_Stats stats);
+TString cye_str_slice_tstring(Cye_String_Slice ss);
+TString cye_ds_tstring(Cye_DString ds);
+
+#define cye__tstring(val)                               \
+  _Generic((val),                                       \
+    Cye_File_Stats    : cye_file_stats_tstring,         \
+    Cye_String_Slice  : cye_str_slice_tstring,          \
+    Cye_DString       : cye_ds_tstring,                 \
+    default           : "(_Generic: unknown type)"      \
+  )
+
+#define cye_tstring(val, ...) cye__tstring(val)(val)
 
 const char *cye_cpu_architecture(void);
 
@@ -3004,6 +3070,18 @@ void cye__assert_handler(char const *prefix, char const *condition, char const *
     fprintf(stderr, "\n");
 }
 
+TString cye_file_stats_tstring(Cye_File_Stats stats) {
+    return cye_tprintf(cye_file_stats_fmt, cye_file_stats_fmt_arg(stats));
+}
+
+TString cye_str_slice_tstring(Cye_String_Slice ss) {
+    return cye_tprintf(cye_ss_fmt, cye_ss_fmt_arg(ss));
+}
+
+TString cye_ds_tstring(Cye_DString ds) {
+    return cye_tprintf(cye_ds_fmt, cye_ds_fmt_arg(ds));
+}
+
 const char *cye_cpu_architecture() {
 #if defined(__x86_64__) || defined(_M_X64)
   return "x86_64";
@@ -3268,22 +3346,23 @@ char *nob_win32_error_message(DWORD err) {
 #define path_replace                       cye_path_replace
 #define path_scandir                       cye_path_scandir
 
+#define file_stats_fmt                     cye_file_stats_fmt
+#define file_stats_fmt_arg                 cye_file_stats_fmt_arg
+
 //------------------------------------------------------------------------------------
 //  Dynamic Array Short Names
 //------------------------------------------------------------------------------------
-#define da_fmt         cye_da_fmt
-#define da_fmt_arg     cye_da_fmt_arg
 #define da_append      cye_da_append
 #define da_free        cye_da_free
 #define da_append_many cye_da_append_many
+#define da_fmt         cye_da_fmt
+#define da_fmt_arg     cye_da_fmt_arg
 
 
 //------------------------------------------------------------------------------------
 //  Slices Short Names
 //------------------------------------------------------------------------------------
 
-#define slice_fmt     cye_slice_fmt
-#define slice_fmt_arg cye_slice_fmt_arg
 
 #define Slice Cye_Slice
 
@@ -3304,13 +3383,11 @@ char *nob_win32_error_message(DWORD err) {
 #define slice_index_of cye_slice_index_of
 
 
+#define slice_fmt     cye_slice_fmt
+#define slice_fmt_arg cye_slice_fmt_arg
 //------------------------------------------------------------------------------------
 //  String Slice Short Names
 //------------------------------------------------------------------------------------
-
-
-#define ss_fmt     cye_ss_fmt
-#define ss_fmt_arg cye_ss_fmt_arg
 
 #define str_slice_make             cye_str_slice_make
 #define str_slice_trim             cye_str_slice_trim
@@ -3326,6 +3403,9 @@ char *nob_win32_error_message(DWORD err) {
 #define str_slice_ends_with        cye_str_slice_ends_with
 #define str_slice_ends_with_zstr   cye_str_slice_ends_with_zstr
 #define str_slice_starts_with_zstr cye_str_slice_starts_with_zstr
+
+#define ss_fmt     cye_ss_fmt
+#define ss_fmt_arg cye_ss_fmt_arg
 //------------------------------------------------------------------------------------
 //  ZString Short Names
 //------------------------------------------------------------------------------------
@@ -3337,8 +3417,6 @@ char *nob_win32_error_message(DWORD err) {
 //  Dynamic String Short Names
 //----------------------------------------------------------------------------------
 
-#define ds_fmt     cye_ds_fmt
-#define ds_fmt_arg cye_ds_fmt_arg
 
 #define ds_write_buf  cye_ds_write_buf
 #define ds_write_zstr cye_ds_write_zstr
@@ -3350,6 +3428,8 @@ char *nob_win32_error_message(DWORD err) {
 #define ds_free   cye_ds_free
 #define ds_printf cye_ds_printf
 
+#define ds_fmt     cye_ds_fmt
+#define ds_fmt_arg cye_ds_fmt_arg
 
 //----------------------------------------------------------------------------------
 //  Mathematics Short Names
@@ -3388,13 +3468,19 @@ char *nob_win32_error_message(DWORD err) {
 #define assert_msg cye_assert_msg
 #define assert cye_assert
 
-#define file_fmt     cye_file_fmt
-#define file_fmt_arg cye_file_fmt_arg
 
-#define file_stats_fmt     cye_file_stats_fmt
-#define file_stats_fmt_arg cye_file_stats_fmt_arg
+#define file_stats_tstring cye_file_stats_tstring
+#define str_slice_tstring  cye_str_slice_tstring
+#define ds_tstring         cye_ds_tstring
+#define tstring            cye_tstring
+
 
 #define cpu_architecture *cye_cpu_architecture
+
+#define file_fmt     cye_file_fmt
+#define file_fmt_arg cye_file_fmt_arg
+#define fmt          cye_fmt
+#define fmt_arg      cye_fmt_arg
 
 
 #endif // CYE_NO_SHORT_NAMES
