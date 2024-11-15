@@ -1071,6 +1071,108 @@ TString cye_ds_tstring(Cye_DString ds);
 
 #define cye_tstring(val, ...) cye__tstring(val)(val)
 
+#define cye_swap(T, a, b) do { \
+    T tmp = (a);               \
+    (a) = (b);                 \
+    (b) = tmp;                 \
+} while (0)
+
+// Sort in reverse order
+#define cye_sort_reverse(T, ptr, count, compare) \
+    cye_sort(T, ptr, count, !(compare))
+
+#define cye_sort cye_bubble_sort
+
+#define cye_sort_q(T, ptr, count, compare) do {                          \
+    T *arr = (ptr);                                                      \
+    size_t count = (count);                                              \
+    for (size_t i = 1; i < count; i++) {                                 \
+        T key = arr[i];                                                  \
+        sizet j = i;                                                     \
+        while (j > 0) {                                                  \
+            T a = key;                                                   \
+            T b = arr[j - 1];                                            \
+            if (!(compare)) break;                                       \
+            arr[j] = arr[j - 1];                                         \
+            j--;                                                         \
+        }                                                                \
+        arr[j] = key;                                                    \
+    }                                                                    \
+} while (0)
+
+
+// #define CYE_SORT CYE_QUICK_SORT
+// Bubble sort macro - stable sort
+#define cye_bubble_sort(T, ptr, count, compare) do {                    \
+    T* arr = (ptr);                                                     \
+    size_t n = (count);                                                 \
+    for (size_t i = 0; i < n - 1; i++) {                                \
+        for (size_t j = 0; j < n - i - 1; j++) {                        \
+            T a = arr[j];                                               \
+            T b = arr[j + 1];                                           \
+            if (compare) {                                              \
+                T temp = arr[j];                                        \
+                arr[j] = arr[j + 1];                                    \
+                arr[j + 1] = temp;                                      \
+            }                                                           \
+        }                                                               \
+    }                                                                   \
+} while (0)
+
+// Quicksort macro - unstable but efficient sort
+#define cye_quick_sort(T, ptr, count, compare) do {                     \
+    T* arr = (ptr);                                                     \
+    size_t n = (count);                                                 \
+    if (n <= 1) break;                                                  \
+                                                                        \
+    /* Stack for tracking partition ranges */                           \
+    size_t stack[64][2];                                                \
+    int top = 0;                                                        \
+                                                                        \
+    /* Initialize stack with full range */                              \
+    stack[top][0] = 0;                                                  \
+    stack[top][1] = n - 1;                                              \
+    top++;                                                              \
+                                                                        \
+    while (top > 0) {                                                   \
+        top--;                                                          \
+        size_t low = stack[top][0];                                     \
+        size_t high = stack[top][1];                                    \
+                                                                        \
+        /* Partition */                                                 \
+        T pivot = arr[high];                                            \
+        size_t i = low;                                                 \
+                                                                        \
+        for (size_t j = low; j < high; j++) {                           \
+            T a = arr[j];                                               \
+            T b = pivot;                                                \
+            if (compare) {                                              \
+                T temp = arr[i];                                        \
+                arr[i] = arr[j];                                        \
+                arr[j] = temp;                                          \
+                i++;                                                    \
+            }                                                           \
+        }                                                               \
+                                                                        \
+        /* Put pivot in correct position */                             \
+        T temp = arr[i];                                                \
+        arr[i] = arr[high];                                             \
+        arr[high] = temp;                                               \
+                                                                        \
+        /* Add sub-partitions to stack if they exist */                 \
+        if (i > low + 1) {                                              \
+            stack[top][0] = low;                                        \
+            stack[top][1] = i - 1;                                      \
+            top++;                                                      \
+        }                                                               \
+        if (i + 1 < high) {                                             \
+            stack[top][0] = i + 1;                                      \
+            stack[top][1] = high;                                       \
+            top++;                                                      \
+        }                                                               \
+    }                                                                   \
+} while (0)
+
 const char *cye_cpu_architecture(void);
 
 #endif // _CYE_H_
@@ -3720,6 +3822,12 @@ char *nob_win32_error_message(DWORD err) {
 #define ds_tstring         cye_ds_tstring
 #define tstring            cye_tstring
 
+#define swap         cye_swap cye_swap
+#define sort_reverse cye_sort_reverse
+#define sort         cye_sort
+#define sort_q       cye_sort_q
+#define bubble_sort  cye_bubble_sort
+#define quick_sort   cye_quick_sort
 
 #define cpu_architecture *cye_cpu_architecture
 
