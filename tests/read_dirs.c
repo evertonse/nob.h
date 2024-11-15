@@ -55,7 +55,7 @@ int main(void) {
     paths.count = 0;
 
     {
-        read_dir_filtered("./", &paths, false, filter_by_extension, ".c");
+        read_dir_filtered("./", &paths, true, filter_by_extension, ".c");
         print_paths();
     }
 

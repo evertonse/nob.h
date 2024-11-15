@@ -609,7 +609,7 @@ bool cye_copy_file(const char *src_path, const char *dst_path);
 bool cye_copy_dir(const char *src_path, const char *dst_path);
 bool cye_read_dir_filtered(
     const char *parent, Cye_Path_DArray *children,
-    bool use_full_path, Cye_File_Filter filter, void *user_data
+    bool use_parent, Cye_File_Filter filter, void *user_data
 );
 
 #define cye_read_dir(parent, children) cye_read_dir_filtered(parent, children, false, NULL, NULL)
@@ -1842,7 +1842,7 @@ defer:
 
 bool cye_read_dir_filtered(
     const char *parent, Cye_Path_DArray *children,
-    bool use_full_path, Cye_File_Filter filter, void *user_data
+    bool use_parent, Cye_File_Filter filter, void *user_data
 ) {
     cye_assert(parent);
     bool result = true;
@@ -1860,7 +1860,7 @@ bool cye_read_dir_filtered(
     struct dirent *ent = readdir(dir);
     while (ent != NULL) {
         const char *path = ent->d_name;
-        if (use_full_path) {
+        if (use_parent) {
             const char *fmt = (parent[strlen(parent) - 1] != PATH_SEPARATOR_CHAR) ? "%s" PATH_SEPARATOR "%s" : "%s%s";
             snprintf(full_path, sizeof(full_path), fmt, parent, path);
             path = full_path;
@@ -1906,7 +1906,7 @@ defer:
     // Read all entries
     do {
         const char *path = find_data.cFileName;
-        if (use_full_path) {
+        if (use_parent) {
             const char *fmt = (parent[strlen(parent) - 1] != PATH_SEPARATOR_CHAR) ? "%s" PATH_SEPARATOR "%s" : "%s%s";
             snprintf(full_path, sizeof(full_path), fmt, parent, path);
             path = full_path;
