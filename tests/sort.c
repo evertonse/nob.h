@@ -73,7 +73,6 @@ int main(void) {
     cye_sort(Item, items, count_of(items), a.id < b.id);
     print_items("After");
 
-    exit(1);
     // Sort by id in descending order
     return 0;
 }

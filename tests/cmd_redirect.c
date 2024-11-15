@@ -48,7 +48,7 @@ int main(void) {
         result_defer(1);
     }
 
-    if (read_entire_file(message_file_path_err, &ds)) {
+    if (file_read_all(message_file_path_err, &ds)) {
         ds_write_zero(&ds);
         trace_info("Got this from std err: %s", ds.items);
         ds.count = 0;
@@ -56,7 +56,7 @@ int main(void) {
         result_defer(1);
     }
 
-    if (!read_entire_file(message_file_path, &ds)) {
+    if (!file_read_all(message_file_path, &ds)) {
         result_defer(1);
     }
 

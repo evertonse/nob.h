@@ -44,7 +44,6 @@ int main(void) {
         ds.count = 0;
         file_read_all(path, &ds);
         trace_info("AFTER OVERRIDE path=%s and its contents="ds_fmt, path, ds_fmt_arg(ds));
-        exit(1);
     }
 
     {
