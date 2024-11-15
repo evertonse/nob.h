@@ -29,12 +29,31 @@ int main(void) {
     }
 
     {
+        path = path_temp_create("build/appenditure.txt");
+        file_write_all_zstr(path, "LOOOOL");
+        DString ds = {0};
+        file_read_all(path, &ds);
+        trace_info("path=%s and its contents="ds_fmt, path, ds_fmt_arg(ds));
+
+        file_append_zstr(path, " time to append");
+        ds.count = 0;
+        file_read_all(path, &ds);
+        trace_info("AFTER append path=%s and its contents="ds_fmt, path, ds_fmt_arg(ds));
+
+        file_write_all_zstr(path, "Overwritten, too bad!");
+        ds.count = 0;
+        file_read_all(path, &ds);
+        trace_info("AFTER OVERRIDE path=%s and its contents="ds_fmt, path, ds_fmt_arg(ds));
+        exit(1);
+    }
+
+    {
         path = path_temp_create("./build///", "tmp", "file.txt");
         make_dirs(path_dir_of(path));
         trace_log(LOG_INFO, "Current path `%s`", path);
 
-        result = write_entire_file(path, NULL, 0);
-        trace_log(LOG_INFO, "Current write_entire_file result: %s", result ? "true" : "false");
+        result = file_write_all(path, NULL, 0);
+        trace_log(LOG_INFO, "Current file_write_all result: %s", result ? "true" : "false");
 
         exists = file_exists(path);
         trace_log(LOG_INFO, "`%s` %s exists", path, exists ? "does" : "does NOT");

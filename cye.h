@@ -65,7 +65,6 @@
 #endif
 
 
-
 //----------------------------------------------------------------------------------
 //  Basic Definitions with No Prefix
 //----------------------------------------------------------------------------------
@@ -145,8 +144,11 @@
 #   endif
 #endif
 
-
 #ifndef static_assert
+
+// Create a maybe valid type
+// Then, use the type by creating a variable, no unused typedef
+// Then, Use the variable, no unused variable
 #   define static_assert3(cond, msg) \
         typedef char static_assertion_##msg[(!!(cond))*2-1]; \
         static static_assertion_##msg static_assertion_use_##msg; \
@@ -605,11 +607,19 @@ bool cye_copy_file(const char *src_path, const char *dst_path);
 bool cye_copy_dir(const char *src_path, const char *dst_path);
 bool cye_read_entire_dir(const char *parent, Cye_Path_DArray *children);
 
+
+// Append data to the end of file
+bool cye_file_append(const char* path, const void* data, size_t count);
+
+// Append zero terminated string to the end of file
+bool cye_file_append_zstr(const char* path, const char* str);
+
 // Write bytes to a file, creating if it doesnt exist
-bool cye_write_entire_file(const char *path, const void *data, usz size);
+bool cye_file_write_all(const char *path, const void *data, usz size);
+#define cye_file_write_all_zstr(path, zstring) cye_file_write_all(path, zstring, strlen(zstring))
 
 // Read contents of file into a Dynamic String
-bool cye_read_entire_file(const char *path, Cye_DString *ds);
+bool cye_file_read_all(const char *path, Cye_DString *ds);
 
 // Get File Type
 Cye_File_Type cye_path_file_type(const char *path);
@@ -995,8 +1005,10 @@ void cye__assert_handler(char const *prefix, char const *condition, char const *
 
 
 
-// NOTE: C11 I think
-#define cye_fmt(val) \
+// NOTE: C11 I think And this is garbage almost, can even use like normal fmt
+// int a = 2;
+// trace_info("some string before" cye_fmt(a), a); // does not work
+#define cye_fmt(val)                        \
   _Generic((val),                           \
     Cye_String_Slice  : cye_ss_fmt,         \
     Cye_File_Stats    : cye_file_stats_fmt, \
@@ -1028,7 +1040,7 @@ void cye__assert_handler(char const *prefix, char const *condition, char const *
 
 // This one can't be don't because _Generic only allows expressions
 #if 0
-// Does not work, ok? But might serve as inspiration of revising 
+// Does not work, ok? But might serve as inspiration of revising
 // for another possible solution for now, just use tstring or
 // .*fmt_arg directly
 #define cye__fmt_arg(val)                                   \
@@ -1040,7 +1052,7 @@ void cye__assert_handler(char const *prefix, char const *condition, char const *
   )
 
 #define cye_fmt_arg(val) cye__fmt_arg((val))((val))
-#endif
+#endif // 0
 
 
 // These `tstring` functions should alwasy allocated new memory
@@ -1576,10 +1588,73 @@ bool cye_make_dir_if_not_exists(const char *path) {
 }
 
 bool cye_copy_file(const char *src_path, const char *dst_path) {
-    cye_todo("VAI TRABALHAR VAGABUNDO");
+    cye_trace_info("Copying %s -> %s", src_path, dst_path);
+#ifndef _WIN32
+    int src_fd = -1;
+    int dst_fd = -1;
+    size_t buf_size = 32*1024;
+    char *buf = cye_context.realloc(NULL, buf_size);
+    cye_assert(buf != NULL && "RAM not enough");
+    bool result = true;
+
+    src_fd = open(src_path, O_RDONLY);
+    if (src_fd < 0) {
+        cye_trace_error("Could not open file %s: %s", src_path, strerror(errno));
+        cye_result_defer(false);
+    }
+
+    struct stat src_stat;
+    if (fstat(src_fd, &src_stat) < 0) {
+        cye_trace_error("Could not get mode of file %s: %s", src_path, strerror(errno));
+        cye_result_defer(false);
+    }
+
+    dst_fd = open(dst_path, O_CREAT | O_TRUNC | O_WRONLY, src_stat.st_mode);
+    if (dst_fd < 0) {
+        cye_trace_error("Could not create file %s: %s", dst_path, strerror(errno));
+        cye_result_defer(false);
+    }
+
+    for (;;) {
+        isz n = read(src_fd, buf, buf_size);
+        if (n == 0) break;
+        if (n < 0) {
+            cye_trace_error("Could not read from file %s: %s", src_path, strerror(errno));
+            cye_result_defer(false);
+        }
+        char *buf2 = buf;
+        while (n > 0) {
+            isz m = write(dst_fd, buf2, n);
+            if (m < 0) {
+                cye_trace_error("Could not write to file %s: %s", dst_path, strerror(errno));
+                cye_result_defer(false);
+            }
+            n    -= m;
+            buf2 += m;
+        }
+    }
+
+defer:
+    free(buf);
+    close(src_fd);
+    close(dst_fd);
+    return result;
+#else
+
+    if (!CopyFile(src_path, dst_path, FALSE)) {
+        cye_trace_error("Could not copy file: %s", nob_win32_error_message(GetLastError()));
+        return false;
+    }
+    return true;
+#endif
 }
 
+
 bool cye_copy_dir(const char *src_path, const char *dst_path) {
+    static int depth = 0;
+
+    depth += 1;
+
     bool result = true;
     Cye_Path_DArray children = {0};
     Cye_DString src_ds = {0};
@@ -1587,11 +1662,14 @@ bool cye_copy_dir(const char *src_path, const char *dst_path) {
     usz temp_checkpoint = cye_temp_save();
 
     Cye_File_Type type = cye_path_file_type(src_path);
-    if (type < 0) return false;
+    if (type < 0) {
+        depth -= 1;
+        return false;
+    }
 
     switch (type) {
         case CYE_FILE_TYPE_DIRECTORY: {
-            if (!cye_make_dir(dst_path)) cye_result_defer(false);
+            if (!cye_make_dirs(dst_path)) cye_result_defer(false);
             if (!cye_read_entire_dir(src_path, &children)) cye_result_defer(false);
 
             for (usz i = 0; i < children.count; ++i) {
@@ -1599,15 +1677,12 @@ bool cye_copy_dir(const char *src_path, const char *dst_path) {
                 if (strcmp(children.items[i], "..") == 0) continue;
 
                 src_ds.count = 0;
-                cye_ds_write(&src_ds, src_path, "/", children.items[i]);
+                cye_ds_write(&src_ds, src_path, PATH_SEPARATOR, children.items[i]);
                 cye_ds_write_zero(&src_ds);
 
                 dst_ds.count = 0;
-                cye_ds_write(&dst_ds, dst_path);
-                cye_ds_write(&dst_ds, "/");
-                cye_ds_write(&dst_ds, children.items[i]);
+                cye_ds_write(&dst_ds, dst_path, PATH_SEPARATOR, children.items[i]);
                 cye_ds_write_zero(&dst_ds);
-
                 if (!cye_copy_dir(src_ds.items, dst_ds.items)) {
                     cye_result_defer(false);
                 }
@@ -1615,7 +1690,13 @@ bool cye_copy_dir(const char *src_path, const char *dst_path) {
         } break;
 
         case CYE_FILE_TYPE_REGULAR: {
-            if (!cye_copy_file(src_path, dst_path)) {
+            Cye_Log_Level old_level = cye_threshold_log_level;
+            cye_set_trace_level(CYE_LOG_TRACE);
+            bool copy_result = cye_copy_file(src_path, dst_path);
+            cye_set_trace_level(old_level);
+
+            if (!copy_result) {
+                cye_set_trace_level(old_level);
                 cye_result_defer(false);
             }
         } break;
@@ -1637,16 +1718,170 @@ defer:
     cye_da_free(src_ds);
     cye_da_free(dst_ds);
     cye_da_free(children);
+    depth -= 1;
+
+    cye_trace_log(CYE_LOG_TRACE, "%s, depth=%d", __FUNCTION__, depth);
+    if (depth == 0) {
+        if (result) {
+            cye_trace_info("Copied directory `%s` into `%s` successfully.", src_path, dst_path);
+        } else {
+            cye_trace_info("Failed to copied directory `%s` into `%s`.", src_path, dst_path);
+        }
+    }
     return result;
 }
 
+
 bool cye_read_entire_dir(const char *parent, Cye_Path_DArray *children) {
-    cye_todo("VAI TRABALHAR VAGABUNDO");
+    cye_assert(parent);
+    bool result = true;
+
+#ifndef _WIN32 // On Unix
+    DIR *dir = NULL;
+
+    dir = opendir(parent);
+    if (dir == NULL) {
+        cye_result_defer(false);
+        cye_trace_error("Could not open directory %s: %s", parent, CYE_GET_ERROR_STRING);
+    }
+
+    errno = 0;
+    struct dirent *ent = readdir(dir);
+    while (ent != NULL) {
+        cye_da_append(children, cye_tstrdup(ent->d_name));
+        ent = readdir(dir);
+    }
+
+    if (errno != 0) {
+        cye_trace_error("Could not read directory %s: %s", parent, CYE_GET_ERROR_STRING);
+        cye_result_defer(false);
+    }
+
+defer:
+    if (dir) {
+        closedir(dir);
+    }
+    return result;
+
+#else // On Windows
+    WIN32_FIND_DATAA find_data;
+    HANDLE find_handle = INVALID_HANDLE_VALUE;
+    char search_path[MAX_PATH];
+
+    // Prepare search path with wildcard
+    if (snprintf(search_path, sizeof(search_path), "%s\\*", parent) >= sizeof(search_path)) {
+        cye_trace_error("Path too long: %s", parent);
+        cye_result_defer(false);
+    }
+
+    // Start file search
+    find_handle = FindFirstFileA(search_path, &find_data);
+    if (find_handle == INVALID_HANDLE_VALUE) {
+        cye_trace_error("Could not open directory %s: %s", parent, CYE_GET_ERROR_STRING);
+        cye_result_defer(false);
+    }
+
+    // Read all entries
+    do {
+        cye_da_append(children, cye_tstrdup(find_data.cFileName));
+    } while (FindNextFileA(find_handle, &find_data));
+
+    // Check if we stopped due to an error
+    DWORD last_error = GetLastError();
+    if (last_error != ERROR_NO_MORE_FILES) {
+        cye_trace_error("Could not read directory %s: %s", parent, CYE_GET_ERROR_STRING);
+        cye_result_defer(false);
+    }
+
+defer:
+    if (find_handle != INVALID_HANDLE_VALUE) {
+        FindClose(find_handle);
+    }
+    return result;
+#endif
 }
 
 
+// Append data to the end of file
+bool cye_file_append(const char* path, const void* data, usz count) {
+    bool result = true;
+
+#ifndef _WIN32
+    int fd = -1;
+    isz bytes_written = 0;
+    
+    // Open file for append
+    fd = open(path, O_WRONLY | O_APPEND | O_CREAT, 0644);
+    if (fd == -1) {
+        cye_trace_error("Could not open file %s for append: %s", path, CYE_GET_ERROR_STRING);
+        cye_result_defer(false);
+    }
+    
+    // Write the data
+    bytes_written = write(fd, data, count);
+    if (bytes_written == -1 || (usz)bytes_written != count) {
+        cye_trace_error("Could not write to file %s: %s", path, CYE_GET_ERROR_STRING);
+        cye_result_defer(false);
+    }
+
+#else
+    HANDLE file_handle = INVALID_HANDLE_VALUE;
+    DWORD bytes_written = 0;
+    
+    // Open file for append
+    file_handle = CreateFileA(
+        path,                     // path
+        FILE_APPEND_DATA,         // access mode (append only)
+        FILE_SHARE_READ,          // share mode
+        NULL,                     // security attributes
+        OPEN_ALWAYS,              // create if not exists
+        FILE_ATTRIBUTE_NORMAL,    // file attributes
+        NULL                      // template file
+    );
+    
+    if (file_handle == INVALID_HANDLE_VALUE) {
+        cye_trace_error("Could not open file %s for append: %s", path, CYE_GET_ERROR_STRING);
+        cye_result_defer(false);
+    }
+    
+    // Move file pointer to end (should be redundant with FILE_APPEND_DATA, but being thorough)
+    if (SetFilePointer(file_handle, 0, NULL, FILE_END) == INVALID_SET_FILE_POINTER) {
+        cye_trace_error("Could not seek to end of file %s: %s", path, CYE_GET_ERROR_STRING);
+        cye_result_defer(false);
+    }
+    
+    // Write the data
+    if (!WriteFile(file_handle, data, (DWORD)count, &bytes_written, NULL) || bytes_written != count) {
+        cye_trace_error("Could not write to file %s: %s", path, CYE_GET_ERROR_STRING);
+        cye_result_defer(false);
+    }
+
+#endif
+
+defer:
+
+#ifndef _WIN32
+    if (fd != -1) {
+        close(fd);
+    }
+#else
+    if (file_handle != INVALID_HANDLE_VALUE) {
+        CloseHandle(file_handle);
+    }
+#endif
+
+    return result;
+}
+
+// Convenience function for appending strings
+bool cye_file_append_zstr(const char* path, const char* str) {
+    return cye_file_append(path, str, strlen(str));
+}
+
+
+
 // TODO: Check this for windows
-bool cye_write_entire_file(const char *path, const void *data, usz size) {
+bool cye_file_write_all(const char *path, const void *data, usz size) {
     bool result = true;
 
     FILE *f = fopen(path, "wb");
@@ -1678,7 +1913,7 @@ defer:
 }
 
 // TODO: Check this for windows
-bool cye_read_entire_file(const char *path, Cye_DString *ds) {
+bool cye_file_read_all(const char *path, Cye_DString *ds) {
     bool result = true;
 
     FILE *f = fopen(path, "rb");
@@ -1688,6 +1923,7 @@ bool cye_read_entire_file(const char *path, Cye_DString *ds) {
     if (m < 0)                     cye_result_defer(false);
     if (fseek(f, 0, SEEK_SET) < 0) cye_result_defer(false);
 
+    cye_set_trace_level(CYE_LOG_TRACE);
     usz new_count = ds->count + m;
     if (new_count > ds->capacity) {
         ds->items = cye_context.realloc(ds->items, new_count);
@@ -2278,11 +2514,12 @@ ZString cye_path_dir_of(ZString file_path) {
     if (!file_path) return NULL;
 
     // If it's already a directory, return thyself
-    cye_threshold_log_level = CYE_LOG_NONE;
+    Cye_Log_Level old_level = cye_threshold_log_level;
+    cye_set_trace_level(CYE_LOG_NONE);
     if (cye_path_file_type(file_path) == CYE_FILE_TYPE_DIRECTORY) {
         return file_path;
     }
-    cye_threshold_log_level = CYE_LOG_INFO;
+    cye_set_trace_level(old_level);
 
     // Get last separator position
     ZString last_sep = NULL;
@@ -2365,7 +2602,7 @@ bool cye_path_touch(ZString path) {
 #ifdef _WIN32
         HANDLE h = CreateFileA(
             path,
-            GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, 
+            GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
             NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL
         );
         if (h == INVALID_HANDLE_VALUE) {
@@ -2406,7 +2643,8 @@ bool cye_make_dir_include_parents_from_tstr(TString path) {
         return false;
     }
 
-    cye_threshold_log_level = CYE_LOG_NONE;
+    Cye_Log_Level old_level = cye_threshold_log_level;
+    cye_set_trace_level(CYE_LOG_NONE);
     bool created = false;
 
     // Remove trailing slashes
@@ -2419,7 +2657,7 @@ bool cye_make_dir_include_parents_from_tstr(TString path) {
 #ifdef _WIN32
     if (len >= 2 && path[1] == ':') {
         if (len == 2) {  // Just a drive letter
-            cye_threshold_log_level = CYE_LOG_INFO;
+            cye_set_trace_level(old_level);
             return true;
         }
         // Skip drive letter and first slash if present
@@ -2446,7 +2684,7 @@ bool cye_make_dir_include_parents_from_tstr(TString path) {
     }
     created |= cye_make_dir(path);
 
-    cye_threshold_log_level = CYE_LOG_INFO;
+    cye_set_trace_level(old_level);
     if (!created) {
         cye_trace_error("could not create directories recursively `%s`: %s", path, CYE_GET_ERROR_STRING);
     } else {
@@ -3293,8 +3531,11 @@ char *nob_win32_error_message(DWORD err) {
 #define copy_file                       cye_copy_file
 #define copy_dir                        cye_copy_dir
 #define read_entire_dir                 cye_read_entire_dir
-#define write_entire_file               cye_write_entire_file
-#define read_entire_file                cye_read_entire_file
+#define file_append                     cye_file_append
+#define file_append_zstr                cye_file_append_zstr
+#define file_write_all                  cye_file_write_all
+#define file_write_all_zstr             cye_file_write_all_zstr
+#define file_read_all                   cye_file_read_all
 #define path_file_type                  cye_path_file_type
 #define path_temp_normalize             cye_path_temp_normalize
 #define path_create_from_array          cye_path_create_from_array
@@ -3485,7 +3726,6 @@ char *nob_win32_error_message(DWORD err) {
 #define file_fmt     cye_file_fmt
 #define file_fmt_arg cye_file_fmt_arg
 #define fmt          cye_fmt
-#define fmt_arg      cye_fmt_arg
 
 
 #endif // CYE_NO_SHORT_NAMES

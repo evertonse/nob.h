@@ -15,20 +15,20 @@
     CYE_SORT(T, ptr, count, !(compare))
 
 // Sort array maintaining stable order for equal elements
-#define CYE_SORT(T, ptr, count, compare) do {                     \
+#define CYE_SORT(T, ptr, count, compare) do {                            \
     T *_arr = (ptr);                                                     \
-    size_t _count = (count);                                            \
-    for (size_t _i = 1; _i < _count; _i++) {                           \
-        T _key = _arr[_i];                                              \
-        size_t _j = _i;                                                 \
-        while (_j > 0) {                                                \
-            T *_a = &_key;                                              \
-            T *_b = &_arr[_j - 1];                                      \
-            if (!(compare)) break;                                      \
-            _arr[_j] = _arr[_j - 1];                                    \
+    size_t _count = (count);                                             \
+    for (size_t _i = 1; _i < _count; _i++) {                             \
+        T _key = _arr[_i];                                               \
+        size_t _j = _i;                                                  \
+        while (_j > 0) {                                                 \
+            T *_a = &_key;                                               \
+            T *_b = &_arr[_j - 1];                                       \
+            if (!(compare)) break;                                       \
+            _arr[_j] = _arr[_j - 1];                                     \
             _j--;                                                        \
         }                                                                \
-        _arr[_j] = _key;                                                \
+        _arr[_j] = _key;                                                 \
     }                                                                    \
 } while (0)
 

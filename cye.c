@@ -3,9 +3,10 @@
 #include "shared.h"
 
 const char *test_names[] = {
+    "making_files",
+    "making_dirs",
     "format_generic_args",
     "file_stats",
-    "making_files",
     "path",
     "cmd_redirect_pipe_win_and_linux",
     "cmd_redirect_pipe",
@@ -13,7 +14,6 @@ const char *test_names[] = {
     "temporary_storage",
     "cmd_redirect",
     "slice",
-    "making_dirs",
     "current_dir",
     "dynamic_string",
     "minimal_log_level",

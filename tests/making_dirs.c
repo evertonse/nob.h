@@ -19,10 +19,15 @@ int main(void) {
     result = cye_make_dir_include_parents_from_tstr(strdup("////1/2/3/4/5/"));
     trace_log(LOG_INFO, "Current result: %s", result?"true":"false");
 
+    result = cye_copy_dir("build/", "build2/");
+    trace_log(LOG_INFO, "Current result: %s", result?"true":"false");
+
+
     if (chk_point == cye_temp_save()) {
         trace_log(LOG_INFO, "No temporary memory wasted, all good :)");
     } else {
         trace_log(LOG_ERROR, "Temporary memory has been WASTED");
     }
+
     return 0;
 }
