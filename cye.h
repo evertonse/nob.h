@@ -7,6 +7,8 @@
 // - Errors:
 //      Must be gracefully handled, the default is if things already exist, it's ok.
 //      If some action is not permitted, trace log an error and let the user handdle (don't crash).
+// - Conventions:
+//      If the function returns `TString` or has a `t` prefix as in `tstrdup` then it's temporary allocated, it , then i
 //
 //
 
@@ -237,12 +239,12 @@
 #define ESCAPE_CODE_OKGREEN   "\033[92m"
 #define ESCAPE_CODE_WARNING   "\033[93m"
 #define ESCAPE_CODE_FAIL      "\033[91m"
-#define ESCAPE_CODE_RESET     "\033[0m"
 #define ESCAPE_CODE_UNDERLINE "\033[4m"
 #define ESCAPE_CODE_LOG       "\x1b[30;1m";
 #define ESCAPE_CODE_WARN      "\x1b[1m\x1b[33m";
 #define ESCAPE_CODE_ERROR     "\x1b[1m\x1b[31m";
 #define ESCAPE_CODE_BOLD      "\x1b[37m";
+#define ESCAPE_CODE_RESET     "\033[0m"
 
 
 
@@ -517,12 +519,12 @@ bool cye_process_wait(Cye_Process proc); // Wait until the process has finished
 //  Commands Declarations
 //------------------------------------------------------------------------------------
 #define cye_cmd_append(cmd, ...)              \
-    cye_da_append_many(                       \
+    cye_da_append_buf(                       \
         cmd, ((const char *[]){__VA_ARGS__}), \
         (sizeof((const char *[]){__VA_ARGS__}) / sizeof(const char *)))
 
 #define cye_cmd_extend(cmd, other_cmd) \
-    cye_da_append_many(cmd, (other_cmd)->items, (other_cmd)->count)
+    cye_da_append_buf(cmd, (other_cmd)->items, (other_cmd)->count)
 
 // Free all the memory allocated by command arguments
 #define cye_cmd_free(cmd) cye_da_free(cmd)
@@ -691,7 +693,7 @@ ZString cye_path_home(void);                                      //  Return hom
 ZString cye_path_cwd(void);                                       //  Return current directory
 ZString cye_path_parent(ZString path);                            //  Returns parent directory
 ZString cye_path_owner(ZString path);                             //  Returns parent directory
-ZString cye_path_stem(ZString path);                              //  Return path without extension
+TString cye_path_stem(ZString file_path);                         //  Return path without extension
 ZString cye_path_dir_of(ZString file_path);                       //  Return directory where file is, if it's already an directory it return its self
 ZString cye_path_ext(ZString path);                               //  Returns only the extension
 bool    cye_path_touch(ZString path);                             //  Creates an empty file if not already exists
@@ -742,9 +744,44 @@ Cye_Path_DArray cye_path_scandir(ZString path);                   // Iterator of
         (da)->items[(da)->count++] = (item);                                               \
     } while (0)
 
+
+//NOTE: Be aware that da_remove.* create a variable i_1 and i_2 that might
+// if you're having unintuitive behaviour, remember, these are macros
+// you might have been having variable overiding somewhere, specially if you're calling macros inside macros;
+
+// Removes an item from a dynamic array at the specified index
+#define cye_da_remove(da, index)                                                               \
+    do {                                                                                       \
+        cye_assert((da)->count > 0 && "Trying to delete from empty array");                    \
+        cye_assert((((usz)(index)) < (da)->count) && "Index out of bounds");                   \
+                                                                                               \
+        /* Shift remaining elements to the left */                                             \
+        for (usz i_1 = (index); i_1 < (da)->count - 1; ++i_1) {                                \
+            (da)->items[i_1] = (da)->items[i_1 + 1];                                           \
+        }                                                                                      \
+                                                                                               \
+        (da)->count--;                                                                         \
+    } while (0)
+
+
+
+// Alternative version that removes by matching value (first occurrence)
+// NOTE: Requires a valid LValue for `item`
+#define cye_da_remove_item(da, item)                                                         \
+    do {                                                                                     \
+        for (usz i_2 = 0; i_2 < (da)->count; ++i_2) {                                        \
+            bool ok = memcmp(&((da)->items[i_2]), &(item), sizeof((da)->items[i_2])) == 0;   \
+            if (ok) {                                                                        \
+                cye_da_remove((da), i_2);                                                    \
+                break;                                                                       \
+            }                                                                                \
+        }                                                                                    \
+    } while (0)
+
+
 #define cye_da_free(da) cye_context.free((da).items)
 
-#define cye_da_append_many(da, new_items, new_items_count)                                      \
+#define cye_da_append_buf(da, new_items, new_items_count)                                       \
     do {                                                                                        \
         if ((da)->count + (new_items_count) > (da)->capacity) {                                 \
             if ((da)->capacity == 0) {                                                          \
@@ -888,6 +925,8 @@ bool cye_str_slice_starts_with_zstr(Cye_String_Slice s, ZString prefix);
 
 bool cye_zstr_ends_with(ZString src, ZString ending);
 bool cye_zstr_starts_with(ZString src, ZString prefix);
+bool cye_zstr_match_pattern(ZString pattern, ZString str);
+
 
 // TODO: Add String Slices Functions as we need
 
@@ -900,13 +939,13 @@ bool cye_zstr_starts_with(ZString src, ZString prefix);
 
 // Don't need to null terminate to see the dynamic string
 
-#define cye_ds_write_buf(ds, buf, size) cye_da_append_many(ds, buf, size)
+#define cye_ds_write_buf(ds, buf, size) cye_da_append_buf(ds, buf, size)
 
 #define cye_ds_write_zstr(ds, zstr)   \
     do {                              \
         const char *s = (zstr);       \
         usz n = strlen(s);            \
-        cye_da_append_many(ds, s, n); \
+        cye_da_append_buf(ds, s, n); \
     } while (0)
 
 #define cye_ds_write(ds, ...)                                               \
@@ -918,7 +957,7 @@ bool cye_zstr_starts_with(ZString src, ZString prefix);
         {                                                                   \
             const char *s = cye_tmp_strs[idx];                              \
             usz n = strlen(s);                                              \
-            cye_da_append_many(ds, s, n);                                   \
+            cye_da_append_buf(ds, s, n);                                   \
         }                                                                   \
     } while (0)
 
@@ -1407,7 +1446,7 @@ Cye_Process cye_cmd_run_async_redirect(Cye_Command cmd, Cye_Command_Redirect red
         // NOTE: This leaks a bit of memory in the child process.
         // But do we actually care? It's a one off leak anyway...
         Cye_Command cmd_null = {0};
-        cye_da_append_many(&cmd_null, cmd.items, cmd.count);
+        cye_da_append_buf(&cmd_null, cmd.items, cmd.count);
         cye_cmd_append(&cmd_null, NULL);
 
         if (execvp(cmd.items[0], (char * const*) cmd_null.items) < 0) {
@@ -1551,7 +1590,7 @@ void cye__rebuild_ourselves(ZString source_path, int argc, ZString *argv) {
     }
 
     cye_cmd_append(&cmd, binary_path);
-    cye_da_append_many(&cmd, argv, argc);
+    cye_da_append_buf(&cmd, argv, argc);
     if (!cye_cmd_run_sync_and_reset(&cmd)) {
         exit(1);
     }
@@ -2035,7 +2074,6 @@ bool cye_file_append_zstr(const char* path, const char* str) {
 }
 
 
-
 // TODO: Check this for windows
 bool cye_file_write_all(const char *path, const void *data, usz size) {
     bool result = true;
@@ -2079,7 +2117,6 @@ bool cye_file_read_all(const char *path, Cye_DString *ds) {
     if (m < 0)                     cye_result_defer(false);
     if (fseek(f, 0, SEEK_SET) < 0) cye_result_defer(false);
 
-    cye_set_trace_level(CYE_LOG_TRACE);
     usz new_count = ds->count + m;
     if (new_count > ds->capacity) {
         ds->items = cye_context.realloc(ds->items, new_count);
@@ -2658,8 +2695,51 @@ ZString cye_path_owner(ZString path) {
 }
 
 // Path without extension
-ZString cye_path_stem(ZString path) {
-    cye_todo("New Functions to Work on");
+TString cye_path_stem(ZString file_path) {
+    static bool last = true; // use_last_dot
+    static char path_buffer[PATH_MAX]; // TODO: May use this to not destruct the original buffer
+    unused(path_buffer);
+    if (file_path == NULL) return NULL;
+    
+    char* result_buffer = cye_tstrdup(file_path);
+    
+    // Handle special dots dir
+    if (strcmp(result_buffer, ".") == 0 || strcmp(result_buffer, "..") == 0) {
+        return result_buffer;
+    }
+    
+    // TODO: Check to see if it fucks up
+    char *first_dot = strchr(result_buffer, '.');
+    char *last_dot = strrchr(result_buffer, '.');
+    
+    // No extension found
+    if (first_dot == NULL) {
+        return result_buffer;
+    }
+    
+    // Handle hidden files starting with a dot
+    if (first_dot == result_buffer) {
+        if (last_dot == first_dot) {
+            // Just a hidden file without extension
+            return result_buffer;
+        }
+        // Hidden file with extension, move past the first dot
+        first_dot = strchr(first_dot + 1, '.');
+        last_dot = strrchr(first_dot, '.');
+        if (first_dot == NULL) {
+            return result_buffer;
+        }
+    }
+    
+    // Terminate string at appropriate dot position
+    if (last) {
+        *last_dot = '\0';
+    } else {
+        *first_dot = '\0';
+    }
+    
+    return result_buffer;
+
 }
 
 
@@ -2744,7 +2824,9 @@ ZString cye_path_dir_of(ZString file_path) {
 
 // Get only extension
 ZString cye_path_ext(ZString path) {
-    cye_todo("New Functions to Work on");
+    const char *file_ext = strrchr(path, '.');
+    // May be null;
+    return file_ext;
 }
 
 // Get only extension
@@ -3258,6 +3340,32 @@ bool cye_zstr_starts_with(ZString src, ZString prefix) {
     return memcmp(src, prefix, prefix_len) == 0;
 }
 
+bool cye_zstr_match_pattern(ZString pattern, ZString str) {
+    // End of pattern
+    if (*pattern == '\0') return *str == '\0';
+
+    // Handle '*' wildcard
+    if (*pattern == '*') {
+        // Skip consecutive '*'
+        while (*(pattern + 1) == '*') pattern++;
+
+        // Try matching the rest of the pattern with different positions in str
+        for (usz i = 0; i <= strlen(str); i++) {
+            if (cye_zstr_match_pattern(pattern + 1, str + i)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Normal character matching
+    if (*str != '\0' && (*pattern == *str || *pattern == '?')) {
+        return cye_zstr_match_pattern(pattern + 1, str + 1);
+    }
+
+    return false;
+}
+
 //----------------------------------------------------------------------------------
 //  Dynamic String Implementation
 //----------------------------------------------------------------------------------
@@ -3400,7 +3508,7 @@ void cye_trace_log(Cye_Log_Level level, const char *fmt, ...) {
         case CYE_LOG_INFO:    color = ESCAPE_CODE_LOG;     reset = ESCAPE_CODE_RESET; break;
         case CYE_LOG_OKAY:    color = ESCAPE_CODE_OKGREEN; reset = ESCAPE_CODE_RESET; break;
         case CYE_LOG_WARNING: color = ESCAPE_CODE_WARNING; reset = ESCAPE_CODE_RESET; break;
-        case CYE_TRACE_ERROR:   color = ESCAPE_CODE_ERROR;   reset = ESCAPE_CODE_RESET; break;
+        case CYE_TRACE_ERROR: color = ESCAPE_CODE_ERROR;   reset = ESCAPE_CODE_RESET; break;
         case CYE_LOG_FATAL:   color = ESCAPE_CODE_ERROR;   reset = ESCAPE_CODE_RESET; bold = ESCAPE_CODE_BOLD; break;
         case CYE_LOG_ALL:     break;
         case CYE_LOG_NONE:    break;
@@ -3758,8 +3866,11 @@ char *nob_win32_error_message(DWORD err) {
 //  Dynamic Array Short Names
 //------------------------------------------------------------------------------------
 #define da_append      cye_da_append
+#define da_remove      cye_da_remove
+#define da_remove_item cye_da_remove_item
 #define da_free        cye_da_free
-#define da_append_many cye_da_append_many
+#define da_append_many cye_da_append_buf //@deprecated: prefer _buf suffix
+#define da_append_buf  cye_da_append_buf
 #define da_fmt         cye_da_fmt
 #define da_fmt_arg     cye_da_fmt_arg
 
@@ -3814,8 +3925,9 @@ char *nob_win32_error_message(DWORD err) {
 //------------------------------------------------------------------------------------
 //  ZString Short Names
 //------------------------------------------------------------------------------------
-#define zstr_ends_with   cye_zstr_ends_with
-#define zstr_starts_with cye_zstr_starts_with
+#define zstr_ends_with     cye_zstr_ends_with
+#define zstr_starts_with   cye_zstr_starts_with
+#define zstr_match_pattern cye_zstr_match_pattern
 
 
 //----------------------------------------------------------------------------------

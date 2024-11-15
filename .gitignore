@@ -5,6 +5,7 @@ cye
 cye.old
 cye.exe
 build/
+build*/
 *.exe
 *.old
 *.out

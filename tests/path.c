@@ -3,8 +3,8 @@
 #include "shared.h"
 
 void test_path_others(void) {
-    
     assert_true(0 == strcmp(path_base_name("/home/64gb/senha.txt"), "senha.txt"));
+    assert_true(0 == strcmp(path_stem("logs/date.log.txt"), "date.log"));
 }
 
 void test_path_dir_of(void) {
