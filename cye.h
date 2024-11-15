@@ -1488,10 +1488,33 @@ bool cye_cmd_run_sync_and_reset(Cye_Command *cmd) {
 }
 
 // Run redirected command synchronously
-bool cye_cmd_run_sync_redirect(Cye_Command cmd, Cye_Command_Redirect redirect);
+bool cye_cmd_run_sync_redirect(Cye_Command cmd, Cye_Command_Redirect redirect) {
+    Cye_Process p = cye_cmd_run_async_redirect(cmd, redirect);
+    if (p == CYE_INVALID_PROCESS) {
+        return false;
+    }
+    return cye_process_wait(p);
+}
 
 // Run redirected command synchronously and set cmd.count to 0 and close all the opened files
-bool cye_cmd_run_sync_redirect_and_reset(Cye_Command *cmd, Cye_Command_Redirect redirect);
+bool cye_cmd_run_sync_redirect_and_reset(Cye_Command *cmd, Cye_Command_Redirect redirect) {
+
+    bool ok = cye_cmd_run_sync_redirect(*cmd, redirect);
+    cmd->count = 0;
+    if (redirect.in) {
+        cye_file_close(*redirect.in);
+        *redirect.in = CYE_INVALID_FILE_HANDLE;
+    }
+    if (redirect.out) {
+        cye_file_close(*redirect.out);
+        *redirect.out = CYE_INVALID_FILE_HANDLE;
+    }
+    if (redirect.err) {
+        cye_file_close(*redirect.err);
+        *redirect.err = CYE_INVALID_FILE_HANDLE;
+    }
+    return ok;
+}
 
 
 // The implementation idea is stolen from https://github.com/zhiayang/nabs

@@ -37,6 +37,7 @@ bool filter_base_name_starts_with(const char *path, void *user_data)
     }
 }
 
+return cye_process_wait(p);
 
 #define print_paths() \
     for (usz idx = 0; idx < paths.count; idx += 1) { \
@@ -59,6 +60,5 @@ int main(void) {
         print_paths();
     }
 
-    exit(1);
     return 0;
 }
