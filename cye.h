@@ -426,6 +426,8 @@ typedef struct {
     usz capacity;
 } Cye_Path_DArray;
 
+typedef bool (*Cye_File_Filter)(const char *path, void *user_data);
+
 typedef enum {
     CYE_FILE_TYPE_REGULAR = 0,
     CYE_FILE_TYPE_DIRECTORY,
@@ -605,8 +607,12 @@ void cye_temp_rewind(usz checkpoint);
 bool cye_make_dir_if_not_exists(const char *path);
 bool cye_copy_file(const char *src_path, const char *dst_path);
 bool cye_copy_dir(const char *src_path, const char *dst_path);
-bool cye_read_entire_dir(const char *parent, Cye_Path_DArray *children);
+bool cye_read_dir_filtered(
+    const char *parent, Cye_Path_DArray *children,
+    bool use_full_path, Cye_File_Filter filter, void *user_data
+);
 
+#define cye_read_dir(parent, children) cye_read_dir_filtered(parent, children, false, NULL, NULL)
 
 // Append data to the end of file
 bool cye_file_append(const char* path, const void* data, size_t count);
@@ -1772,7 +1778,7 @@ bool cye_copy_dir(const char *src_path, const char *dst_path) {
     switch (type) {
         case CYE_FILE_TYPE_DIRECTORY: {
             if (!cye_make_dirs(dst_path)) cye_result_defer(false);
-            if (!cye_read_entire_dir(src_path, &children)) cye_result_defer(false);
+            if (!cye_read_dir(src_path, &children)) cye_result_defer(false);
 
             for (usz i = 0; i < children.count; ++i) {
                 if (strcmp(children.items[i], ".") == 0) continue;
@@ -1834,10 +1840,13 @@ defer:
 }
 
 
-bool cye_read_entire_dir(const char *parent, Cye_Path_DArray *children) {
+bool cye_read_dir_filtered(
+    const char *parent, Cye_Path_DArray *children,
+    bool use_full_path, Cye_File_Filter filter, void *user_data
+) {
     cye_assert(parent);
     bool result = true;
-
+    static char full_path[PATH_MAX]; // Reuse the same buffer (hence static)
 #ifndef _WIN32 // On Unix
     DIR *dir = NULL;
 
@@ -1850,7 +1859,18 @@ bool cye_read_entire_dir(const char *parent, Cye_Path_DArray *children) {
     errno = 0;
     struct dirent *ent = readdir(dir);
     while (ent != NULL) {
-        cye_da_append(children, cye_tstrdup(ent->d_name));
+        const char *path = ent->d_name;
+        if (use_full_path) {
+            const char *fmt = (parent[strlen(parent) - 1] != PATH_SEPARATOR_CHAR) ? "%s" PATH_SEPARATOR "%s" : "%s%s";
+            snprintf(full_path, sizeof(full_path), fmt, parent, path);
+            path = full_path;
+        }
+
+        // Apply only filter if provided, otherwise just append anyways
+        if (filter == NULL || filter(path, user_data)) {
+            cye_da_append(children, cye_tstrdup(path));
+        }
+
         ent = readdir(dir);
     }
 
@@ -1885,7 +1905,18 @@ defer:
 
     // Read all entries
     do {
-        cye_da_append(children, cye_tstrdup(find_data.cFileName));
+        const char *path = find_data.cFileName;
+        if (use_full_path) {
+            const char *fmt = (parent[strlen(parent) - 1] != PATH_SEPARATOR_CHAR) ? "%s" PATH_SEPARATOR "%s" : "%s%s";
+            snprintf(full_path, sizeof(full_path), fmt, parent, path);
+            path = full_path;
+        }
+
+        // Apply only filter if provided, otherwise just append anyways
+        if (filter == NULL || filter(path, user_data)) {
+            cye_da_append(children, cye_tstrdup(path));
+        }
+        // cye_da_append(children, cye_tstrdup(find_data.cFileName));
     } while (FindNextFileA(find_handle, &find_data));
 
     // Check if we stopped due to an error
@@ -3549,6 +3580,7 @@ char *nob_win32_error_message(DWORD err) {
 #define Log_Level           Cye_Log_Level
 #define DArray              Cye_DArray
 #define Path_DArray         Cye_Path_DArray
+#define File_Filter         Cye_File_Filter
 #define File_Type           Cye_File_Type
 #define File_Stats          Cye_File_Stats
 #define DString             Cye_DString
@@ -3632,7 +3664,9 @@ char *nob_win32_error_message(DWORD err) {
 #define make_dir_if_not_exists          cye_make_dir_if_not_exists
 #define copy_file                       cye_copy_file
 #define copy_dir                        cye_copy_dir
-#define read_entire_dir                 cye_read_entire_dir
+#define read_dir                        cye_read_dir
+#define read_dir_filtered               cye_read_dir_filtered
+
 #define file_append                     cye_file_append
 #define file_append_zstr                cye_file_append_zstr
 #define file_write_all                  cye_file_write_all

@@ -3,6 +3,7 @@
 #include "shared.h"
 
 const char *test_names[] = {
+    "read_dirs",
     "sort",
     "making_files",
     "making_dirs",
