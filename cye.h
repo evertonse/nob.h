@@ -443,6 +443,12 @@ typedef enum {
     CYE_GLOB_MATCHED
 } Cye_Match_Result; // Don't know if we'll keep it
 
+typedef enum {
+    CYE_PATTERN_NO_ESCAPE = (0x0001 << 0),
+    CYE_PATTERN_PATH      = (0x0001 << 1),
+    CYE_PATTERN_PERIOD    = (0x0001 << 2)
+} Cye_Pattern_Flags; // Don't know if we'll keep it
+
 typedef struct {
     time_t created_at;
     time_t accessed_at;
@@ -502,9 +508,7 @@ typedef struct {
     rawptr any;
 } Cye_Context;
 
-#define CYE_FNM_NOESCAPE (0x0001 << 0)
-#define CYE_FNM_PATHNAME (0x0001 << 1)
-#define CYE_FNM_PERIOD   (0x0001 << 2)
+
 
 
 /*..................................................................................
@@ -3403,7 +3407,7 @@ bool cye_pattern_match(ZString pattern, ZString text, int flags) {
         return false;
     }
 
-    if (flags & CYE_FNM_PERIOD && *text == '.' && *pattern != '.') {
+    if (flags & CYE_PATTERN_PERIOD && *text == '.' && *pattern != '.') {
         return false;
     }
     if (*pattern == '\0') {
@@ -3413,20 +3417,9 @@ bool cye_pattern_match(ZString pattern, ZString text, int flags) {
         return strcmp(pattern, "*") == 0;
     }
 
-    // if (flags & CYE_FNM_PATHNAME && *text == '/') {
-    //     if (*pattern == *text) {
-    //         if (flags & CYE_FNM_PERIOD
-    //             && text[1] == '.'
-    //             && pattern[1] != '.')
-    //         {
-    //             return false;
-    //         }
-    //         return cye_pattern_match(pattern + 1, text + 1, flags);
-    //     }
-    //     return false;
-    // }
-
-    if (flags & CYE_FNM_PATHNAME && *text == '/') {
+    if ( (flags & CYE_PATTERN_PATH && *text == '/')
+      || (flags & CYE_PATTERN_PERIOD && *text == '.'))
+    {
         if (*pattern == *text) {
             return cye_pattern_match(pattern + 1, text + 1, flags);
         } else if (*pattern == '*' || *pattern == '?'){
@@ -3435,17 +3428,10 @@ bool cye_pattern_match(ZString pattern, ZString text, int flags) {
         return false;
     }
 
-    if (flags & CYE_FNM_PERIOD && *text == '.') {
-        if (*pattern == *text) {
-            return cye_pattern_match(pattern + 1, text + 1, flags);
-        }
-        return false;
-    }
-
     switch (*pattern) {
     // TODO:
     // case '\\':
-    //     if (!(flags & CYE_FNM_NOESCAPE))
+    //     if (!(flags & CYE_PATTERN_NO_ESCAPE))
     //         pattern++;
     //     break;
     case '*':
@@ -3513,6 +3499,8 @@ bool cye_is_pattern_well_formed(ZString pattern) {
     return true;
 }
 
+// Make the glob match accpet pattern?
+// Advantages is that is less recursive than pattern_match
 Cye_Match_Result cye_glob_match(const char *pattern, const char *text) {
     cye_trace_warn("`%s` untested, this one does't consider period `.` and slash `/` special.", __FUNCTION__);
     while (*pattern != '\0' && *text != '\0') {
@@ -3605,119 +3593,6 @@ Cye_Match_Result cye_glob_match(const char *pattern, const char *text) {
                 return CYE_GLOB_NO_MATCH;
             }
         }
-        }
-    }
-
-    if (*text == '\0') {
-        while (*pattern == '*') {
-            pattern += 1;
-        }
-        if (*pattern == '\0') {
-            return CYE_GLOB_MATCHED;
-        }
-    }
-
-    return CYE_GLOB_NO_MATCH;
-}
-
-Cye_Match_Result cye_glob_match_with_flags(const char *pattern, const char *text, int flags) {
-    while (*pattern != '\0' && *text != '\0') {
-
-        if (flags & CYE_FNM_PATHNAME && *text == '/') {
-            goto normal_case;
-        }
-        if (flags & CYE_FNM_PERIOD && *text == '.') {
-            goto normal_case;
-        }
-        switch (*pattern) {
-            case '?': {
-                pattern += 1;
-                text += 1;
-            } break;
-
-            case '*': {
-                Cye_Match_Result result = cye_glob_match_with_flags(pattern + 1, text, flags);
-                if (result != CYE_GLOB_NO_MATCH) {
-                    return result;
-                }
-                text += 1;
-            } break;
-
-            case '[': {
-                bool matched = false;
-                bool negate = false;
-
-                pattern += 1; // skipping [
-                if (*pattern == '\0') {
-                    return CYE_GLOB_SYNTAX_ERROR; // unclosed [
-                }
-
-                if (*pattern == '!') {
-                    negate = true;
-                    pattern += 1;
-                    if (*pattern == '\0') {
-                        return CYE_GLOB_SYNTAX_ERROR; // unclosed [
-                    }
-                }
-
-                char prev = *pattern;
-                matched |= prev == *text;
-                pattern += 1;
-
-                while (*pattern != ']' && *pattern != '\0') {
-                    switch (*pattern) {
-                    case '-': {
-                        pattern += 1;
-                        switch (*pattern) {
-                        case ']':
-                            matched |= '-' == *text;
-                            break;
-                        case '\0':
-                            return CYE_GLOB_SYNTAX_ERROR; // unclosed [
-                        default: {
-                            matched |= prev <= *text && *text <= *pattern;
-                            prev = *pattern;
-                            pattern += 1;
-                        }
-                        }
-                    } break;
-                    default: {
-                        prev = *pattern;
-                        matched |= prev == *text;
-                        pattern += 1;
-                    }
-                    }
-                }
-
-                if (*pattern != ']') {
-                    return CYE_GLOB_SYNTAX_ERROR; // unclosed [
-                }
-                if (negate) {
-                    matched = !matched;
-                }
-                if (!matched) {
-                    return CYE_GLOB_NO_MATCH;
-                }
-
-                pattern += 1;
-                text += 1;
-            } break;
-
-            case '\\':
-                pattern += 1;
-                if (*pattern == '\0') {
-                    return CYE_GLOB_SYNTAX_ERROR; // unfinished escape
-                }
-            // fallthrough
-            default: {
-                normal_case:
-                if (*pattern == *text) {
-                    pattern += 1;
-                    text += 1;
-                } else {
-                    return CYE_GLOB_NO_MATCH;
-                }
-            }
         }
     }
 

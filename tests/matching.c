@@ -191,22 +191,22 @@ void test_character_classes_error_no_closing_square_bracket(void) {
 }
 
 void test_flag_pathname(void) {
-    assert_true(pattern_match("/*a*b*/*c*d*", "/a.b/c.d", CYE_FNM_PATHNAME));
-    assert_true(pattern_match("", "", CYE_FNM_PATHNAME));
-    assert_true(pattern_match("/", "/", CYE_FNM_PATHNAME));
-    assert_false(pattern_match("*", "/", CYE_FNM_PATHNAME));
-    assert_true(pattern_match("/*", "/etc", CYE_FNM_PATHNAME));
-    assert_false(pattern_match("/*", "/e/tc", CYE_FNM_PATHNAME));
-    assert_true(pattern_match("/*/*", "/etc/foo", CYE_FNM_PATHNAME));
-    assert_false(pattern_match("/*/*", "/etc/foo/", CYE_FNM_PATHNAME));
-    assert_true(pattern_match("/*/*/", "/etc/foo/", CYE_FNM_PATHNAME));
-    assert_true(pattern_match("/*/*/*.c", "/etc/foo/bar.c", CYE_FNM_PATHNAME));
-    assert_false(pattern_match("/*/*/*.c", "/etc/foo/ba/r.c", CYE_FNM_PATHNAME));
-    assert_false(pattern_match("?", "/", CYE_FNM_PATHNAME));
-    assert_true(pattern_match("?/?", "a/x", CYE_FNM_PATHNAME));
-    assert_false(pattern_match("???", "a/x", CYE_FNM_PATHNAME));
-    assert_false(pattern_match("[abc/]", "/", CYE_FNM_PATHNAME));
-    assert_true(pattern_match("[abc/]/x", "a/x", CYE_FNM_PATHNAME));
+    assert_true(pattern_match("/*a*b*/*c*d*", "/a.b/c.d", CYE_PATTERN_PATH));
+    assert_true(pattern_match("", "", CYE_PATTERN_PATH));
+    assert_true(pattern_match("/", "/", CYE_PATTERN_PATH));
+    assert_false(pattern_match("*", "/", CYE_PATTERN_PATH));
+    assert_true(pattern_match("/*", "/etc", CYE_PATTERN_PATH));
+    assert_false(pattern_match("/*", "/e/tc", CYE_PATTERN_PATH));
+    assert_true(pattern_match("/*/*", "/etc/foo", CYE_PATTERN_PATH));
+    assert_false(pattern_match("/*/*", "/etc/foo/", CYE_PATTERN_PATH));
+    assert_true(pattern_match("/*/*/", "/etc/foo/", CYE_PATTERN_PATH));
+    assert_true(pattern_match("/*/*/*.c", "/etc/foo/bar.c", CYE_PATTERN_PATH));
+    assert_false(pattern_match("/*/*/*.c", "/etc/foo/ba/r.c", CYE_PATTERN_PATH));
+    assert_false(pattern_match("?", "/", CYE_PATTERN_PATH));
+    assert_true(pattern_match("?/?", "a/x", CYE_PATTERN_PATH));
+    assert_false(pattern_match("???", "a/x", CYE_PATTERN_PATH));
+    assert_false(pattern_match("[abc/]", "/", CYE_PATTERN_PATH));
+    assert_true(pattern_match("[abc/]/x", "a/x", CYE_PATTERN_PATH));
 }
 
 void test_no_flag_pathname(void) {
@@ -229,10 +229,10 @@ void test_no_flag_pathname(void) {
 
 
 void test_flag_period(void) {
-    assert_true(pattern_match(".hello", ".hello", CYE_FNM_PERIOD));
-    assert_false(pattern_match("*hello", ".hello", CYE_FNM_PERIOD));
-    assert_true(pattern_match(".he*", ".hello", CYE_FNM_PERIOD));
-    assert_false(pattern_match("he*o", "hel.lo", CYE_FNM_PERIOD));
+    assert_true(pattern_match(".hello", ".hello", CYE_PATTERN_PERIOD));
+    assert_false(pattern_match("*hello", ".hello", CYE_PATTERN_PERIOD));
+    assert_true(pattern_match(".he*", ".hello", CYE_PATTERN_PERIOD));
+    assert_false(pattern_match("he*o", "hel.lo", CYE_PATTERN_PERIOD));
     
 }
 
@@ -244,7 +244,7 @@ void test_no_flag_period(void) {
 }
 
 void test_flag_period_and_flag_pathname(void) {
-    int flags = CYE_FNM_PERIOD | CYE_FNM_PATHNAME;
+    int flags = CYE_PATTERN_PERIOD | CYE_PATTERN_PATH;
     assert_true(pattern_match("/.hello", "/.hello", flags));
     assert_true(pattern_match("/.hel/.lo", "/.hel/.lo", flags));
     assert_false(pattern_match("/*hel/.lo", "/.hel/.lo", flags));
@@ -298,5 +298,4 @@ int main(int argc, char *argv[]) {
     test_wildcard();
     test_string_comparison();
     error_count_log_and_reset();
-    exit(1);
 }
