@@ -63,150 +63,150 @@ void test_pattern_match() {
 
 
 void test_string_comparison(void) {
-    assert_true(pattern_match("", "", 0));
-    assert_true(pattern_match("a", "a", 0));
-    assert_true(pattern_match("abc", "abc", 0));
-    assert_false(pattern_match("ab", "abc", 0));
-    assert_false(pattern_match("a", "", 0));
+    assert_true(pattern_match("",           "",          0));
+    assert_true(pattern_match("a",          "a",         0));
+    assert_true(pattern_match("abc",        "abc",       0));
+    assert_false(pattern_match("ab",        "abc",       0));
+    assert_false(pattern_match("a",         "",          0));
 }
 
 void test_wildcard(void) {
-    assert_true(pattern_match("*", "", 0));
-    assert_true(pattern_match("*", "a", 0));
-    assert_true(pattern_match("*", "abcdefgh", 0));
-    assert_true(pattern_match("a*", "abcdefgh", 0));
-    assert_true(pattern_match("*h", "abcdefgh", 0));
-    assert_true(pattern_match("a*h", "abcdefgh", 0));
-    assert_false(pattern_match("a*z", "abcdefgh", 0));
-    assert_true(pattern_match("a*b*c", "aIIIbIIIc", 0));
-    assert_false(pattern_match("a*b*c", "aIIIIIIc", 0));
+    assert_true(pattern_match("*",          "",          0));
+    assert_true(pattern_match("*",          "a",         0));
+    assert_true(pattern_match("*",          "abcdefgh",  0));
+    assert_true(pattern_match("a*",         "abcdefgh",  0));
+    assert_true(pattern_match("*h",         "abcdefgh",  0));
+    assert_true(pattern_match("a*h",        "abcdefgh",  0));
+    assert_false(pattern_match("a*z",       "abcdefgh",  0));
+    assert_true(pattern_match("a*b*c",      "aIIIbIIIc", 0));
+    assert_false(pattern_match("a*b*c",     "aIIIIIIc",  0));
 }
 
 void test_question_mark(void) {
-    assert_false(pattern_match("?", "", 0));
-    assert_true(pattern_match("?", "a", 0));
-    assert_true(pattern_match("x?x", "xax", 0));
-    assert_false(pattern_match("x?x", "xx", 0));
-    assert_true(pattern_match("x???x???x", "x123x456x", 0));
-    assert_false(pattern_match("x??x???x", "x123x456x", 0));
+    assert_false(pattern_match("?",         "",          0));
+    assert_true(pattern_match("?",          "a",         0));
+    assert_true(pattern_match("x?x",        "xax",       0));
+    assert_false(pattern_match("x?x",       "xx",        0));
+    assert_true(pattern_match("x???x???x",  "x123x456x", 0));
+    assert_false(pattern_match("x??x???x",  "x123x456x", 0));
 }
 
 void test_character_classes(void) {
-    assert_true(pattern_match("[zxc]", "z", 0));
-    assert_true(pattern_match("[zxc]", "x", 0));
-    assert_true(pattern_match("[zxc]", "c", 0));
-    assert_false(pattern_match("[zxc]", "j", 0));
-    assert_true(pattern_match("x[zxc]x", "xcx", 0));
-    assert_false(pattern_match("x[zxc]x", "xjx", 0));
+    assert_true(pattern_match("[zxc]",      "z",         0));
+    assert_true(pattern_match("[zxc]",      "x",         0));
+    assert_true(pattern_match("[zxc]",      "c",         0));
+    assert_false(pattern_match("[zxc]",     "j",         0));
+    assert_true(pattern_match("x[zxc]x",    "xcx",       0));
+    assert_false(pattern_match("x[zxc]x",   "xjx",       0));
 }
 
 void test_character_classes_range(void) {
-    assert_true(pattern_match("[a-c]", "a", 0));
-    assert_true(pattern_match("[a-c]", "b", 0));
-    assert_true(pattern_match("[a-c]", "c", 0));
-    assert_false(pattern_match("[a-c]", "x", 0));
-    assert_true(pattern_match("x[a-c]x", "xcx", 0));
-    assert_false(pattern_match("x[a-c]x", "xdx", 0));
-    assert_false(pattern_match("[a-cF-G]", "d", 0));
-    assert_true(pattern_match("[a-cF-G]", "b", 0));
-    assert_true(pattern_match("[a-cF-Z]", "H", 0));
-    assert_true(pattern_match("[a-cF-Z]", "I", 0));
-    assert_true(pattern_match("[a-cF-Z]", "c", 0));
-    assert_false(pattern_match("[a-cF-Z]", "C", 0));
+    assert_true(pattern_match("[a-c]",      "a",         0));
+    assert_true(pattern_match("[a-c]",      "b",         0));
+    assert_true(pattern_match("[a-c]",      "c",         0));
+    assert_false(pattern_match("[a-c]",     "x",         0));
+    assert_true(pattern_match("x[a-c]x",    "xcx",       0));
+    assert_false(pattern_match("x[a-c]x",   "xdx",       0));
+    assert_false(pattern_match("[a-cF-G]",  "d",         0));
+    assert_true(pattern_match("[a-cF-G]",   "b",         0));
+    assert_true(pattern_match("[a-cF-Z]",   "H",         0));
+    assert_true(pattern_match("[a-cF-Z]",   "I",         0));
+    assert_true(pattern_match("[a-cF-Z]",   "c",         0));
+    assert_false(pattern_match("[a-cF-Z]",  "C",         0));
 }
 
 void test_character_classes_complement() {
-    assert_true(pattern_match("[!zxc]", "j", 0));
-    assert_false(pattern_match("[!zxc]", "z", 0));
-    assert_false(pattern_match("[!zxc]", "x", 0));
-    assert_false(pattern_match("[!zxc]", "c", 0));
-    assert_false(pattern_match("x[!zxc]x", "xcx", 0));
-    assert_true(pattern_match("x[!zxc]x", "xjx", 0));
+    assert_true(pattern_match("[!zxc]",     "j",         0));
+    assert_false(pattern_match("[!zxc]",    "z",         0));
+    assert_false(pattern_match("[!zxc]",    "x",         0));
+    assert_false(pattern_match("[!zxc]",    "c",         0));
+    assert_false(pattern_match("x[!zxc]x",  "xcx",       0));
+    assert_true(pattern_match("x[!zxc]x",   "xjx",       0));
 }
 
 void test_character_classes_ranges_complement(void) {
-    assert_false(pattern_match("[!a-c]", "a", 0));
-    assert_false(pattern_match("[!a-c]", "b", 0));
-    assert_false(pattern_match("[!a-c]", "c", 0));
-    assert_true(pattern_match("[!a-c]", "x", 0));
-    assert_false(pattern_match("x[!a-c]x", "xcx", 0));
-    assert_true(pattern_match("x[!a-c]x", "xdx", 0));
-    assert_true(pattern_match("[!a-cF-G]", "d", 0));
-    assert_false(pattern_match("[!a-cF-G]", "b", 0));
-    assert_false(pattern_match("[!a-cF-Z]", "H", 0));
-    assert_false(pattern_match("[!a-cF-Z]", "I", 0));
-    assert_false(pattern_match("[!a-cF-Z]", "c", 0));
-    assert_true(pattern_match("[!a-cF-Z]", "C", 0));
+    assert_false(pattern_match("[!a-c]",    "a",         0));
+    assert_false(pattern_match("[!a-c]",    "b",         0));
+    assert_false(pattern_match("[!a-c]",    "c",         0));
+    assert_true(pattern_match("[!a-c]",     "x",         0));
+    assert_false(pattern_match("x[!a-c]x",  "xcx",       0));
+    assert_true(pattern_match("x[!a-c]x",   "xdx",       0));
+    assert_true(pattern_match("[!a-cF-G]",  "d",         0));
+    assert_false(pattern_match("[!a-cF-G]", "b",         0));
+    assert_false(pattern_match("[!a-cF-Z]", "H",         0));
+    assert_false(pattern_match("[!a-cF-Z]", "I",         0));
+    assert_false(pattern_match("[!a-cF-Z]", "c",         0));
+    assert_true(pattern_match("[!a-cF-Z]",  "C",         0));
 }
 
 void test_character_classes_range_with_regular_character(void) {
-    assert_true(pattern_match("[fa-cF-Zg]", "a", 0));
-    assert_true(pattern_match("[fa-cF-Zg]", "b", 0));
-    assert_true(pattern_match("[fa-cF-Zg]", "H", 0));
-    assert_true(pattern_match("[fa-cF-Zg]", "Z", 0));
-    assert_true(pattern_match("[fa-cF-Zg]", "f", 0));
-    assert_true(pattern_match("[fa-cF-Zg]", "g", 0));
-    assert_false(pattern_match("[fa-cF-Zg]", "j", 0));
+    assert_true(pattern_match("[fa-cF-Zg]",  "a",   0));
+    assert_true(pattern_match("[fa-cF-Zg]",  "b",   0));
+    assert_true(pattern_match("[fa-cF-Zg]",  "H",   0));
+    assert_true(pattern_match("[fa-cF-Zg]",  "Z",   0));
+    assert_true(pattern_match("[fa-cF-Zg]",  "f",   0));
+    assert_true(pattern_match("[fa-cF-Zg]",  "g",   0));
+    assert_false(pattern_match("[fa-cF-Zg]", "j",   0));
     
 }
 
 void test_character_classes_first_character_no_meaning(void) {
-    assert_true(pattern_match("x[]]x", "x]x", 0));
-    assert_true(pattern_match("x[]a]x", "xax", 0));
-    assert_true(pattern_match("x[]a]x", "x]x", 0));
-    assert_false(pattern_match("x[]a]x", "x[x", 0));
-    assert_true(pattern_match("[][!]", "[", 0));
-    assert_true(pattern_match("[][!]", "!", 0));
-    assert_true(pattern_match("[][!]", "]", 0));
+    assert_true(pattern_match("x[]]x",       "x]x", 0));
+    assert_true(pattern_match("x[]a]x",      "xax", 0));
+    assert_true(pattern_match("x[]a]x",      "x]x", 0));
+    assert_false(pattern_match("x[]a]x",     "x[x", 0));
+    assert_true(pattern_match("[][!]",       "[",   0));
+    assert_true(pattern_match("[][!]",       "!",   0));
+    assert_true(pattern_match("[][!]",       "]",   0));
 }
 
 void test_character_classes_hypen(void) {
-    assert_true(pattern_match("[-]", "-", 0));
-    assert_false(pattern_match("[-]", "a", 0));
-    assert_true(pattern_match("[-a]", "a", 0));
-    assert_true(pattern_match("[a-]", "a", 0));
-    assert_true(pattern_match("[-a]", "-", 0));
-    assert_true(pattern_match("[a-]", "-", 0));
-    assert_true(pattern_match("[a-c-]", "b", 0));
-    assert_true(pattern_match("[a-c-]", "-", 0));
-    assert_true(pattern_match("[-a-c]", "b", 0));
-    assert_true(pattern_match("[-a-c]", "-", 0));
+    assert_true(pattern_match("[-]",         "-",   0));
+    assert_false(pattern_match("[-]",        "a",   0));
+    assert_true(pattern_match("[-a]",        "a",   0));
+    assert_true(pattern_match("[a-]",        "a",   0));
+    assert_true(pattern_match("[-a]",        "-",   0));
+    assert_true(pattern_match("[a-]",        "-",   0));
+    assert_true(pattern_match("[a-c-]",      "b",   0));
+    assert_true(pattern_match("[a-c-]",      "-",   0));
+    assert_true(pattern_match("[-a-c]",      "b",   0));
+    assert_true(pattern_match("[-a-c]",      "-",   0));
 }
 
 void test_character_classes_hypen_and_square_bracket(void) {
-    assert_true(pattern_match("[]-]", "-", 0));
-    assert_true(pattern_match("[]-]", "]", 0));
-    assert_false(pattern_match("[]-]", "x", 0));
+    assert_true(pattern_match("[]-]",        "-",   0));
+    assert_true(pattern_match("[]-]",        "]",   0));
+    assert_false(pattern_match("[]-]",       "x",   0));
     
 }
 
 void test_character_classes_error_no_closing_square_bracket(void) {
-    assert_false(pattern_match("[", "", 0));
-    assert_false(pattern_match("[[", "", 0));
-    assert_false(pattern_match("[]", "", 0));
-    // cr_assert_neq(pattern_match("[]]", "", 0), CYE_FNM_ERROR_MISSING_CLOSING);
-    assert_false(pattern_match("[\0]", "", 0));
-    assert_false(pattern_match("[a\0]", "", 0));
-    assert_false(pattern_match("[abcd\0]", "", 0));
+    assert_false(pattern_match("[",          "",    0));
+    assert_false(pattern_match("[[",         "",    0));
+    assert_false(pattern_match("[]",         "",    0));
+    // cr_assert_neq(pattern_match("[]]",    "",    0), CYE_FNM_ERROR_MISSING_CLOSING);
+    assert_false(pattern_match("[\0]",       "",    0));
+    assert_false(pattern_match("[a\0]",      "",    0));
+    assert_false(pattern_match("[abcd\0]",   "",    0));
 }
 
 void test_flag_pathname(void) {
-    assert_true(pattern_match("/*a*b*/*c*d*", "/a.b/c.d", CYE_PATTERN_PATH));
-    assert_true(pattern_match("", "", CYE_PATTERN_PATH));
-    assert_true(pattern_match("/", "/", CYE_PATTERN_PATH));
-    assert_false(pattern_match("*", "/", CYE_PATTERN_PATH));
-    assert_true(pattern_match("/*", "/etc", CYE_PATTERN_PATH));
-    assert_false(pattern_match("/*", "/e/tc", CYE_PATTERN_PATH));
-    assert_true(pattern_match("/*/*", "/etc/foo", CYE_PATTERN_PATH));
-    assert_false(pattern_match("/*/*", "/etc/foo/", CYE_PATTERN_PATH));
-    assert_true(pattern_match("/*/*/", "/etc/foo/", CYE_PATTERN_PATH));
-    assert_true(pattern_match("/*/*/*.c", "/etc/foo/bar.c", CYE_PATTERN_PATH));
-    assert_false(pattern_match("/*/*/*.c", "/etc/foo/ba/r.c", CYE_PATTERN_PATH));
-    assert_false(pattern_match("?", "/", CYE_PATTERN_PATH));
-    assert_true(pattern_match("?/?", "a/x", CYE_PATTERN_PATH));
-    assert_false(pattern_match("???", "a/x", CYE_PATTERN_PATH));
-    assert_false(pattern_match("[abc/]", "/", CYE_PATTERN_PATH));
-    assert_true(pattern_match("[abc/]/x", "a/x", CYE_PATTERN_PATH));
+    assert_true(pattern_match("/*a*b*/*c*d*", "/a.b/c.d",        CYE_PATTERN_PATH));
+    assert_true(pattern_match("",             "",                CYE_PATTERN_PATH));
+    assert_true(pattern_match("/",            "/",               CYE_PATTERN_PATH));
+    assert_false(pattern_match("*",           "/",               CYE_PATTERN_PATH));
+    assert_true(pattern_match("/*",           "/etc",            CYE_PATTERN_PATH));
+    assert_false(pattern_match("/*",          "/e/tc",           CYE_PATTERN_PATH));
+    assert_true(pattern_match("/*/*",         "/etc/foo",        CYE_PATTERN_PATH));
+    assert_false(pattern_match("/*/*",        "/etc/foo/",       CYE_PATTERN_PATH));
+    assert_true(pattern_match("/*/*/",        "/etc/foo/",       CYE_PATTERN_PATH));
+    assert_true(pattern_match("/*/*/*.c",     "/etc/foo/bar.c",  CYE_PATTERN_PATH));
+    assert_false(pattern_match("/*/*/*.c",    "/etc/foo/ba/r.c", CYE_PATTERN_PATH));
+    assert_false(pattern_match("?",           "/",               CYE_PATTERN_PATH));
+    assert_true(pattern_match("?/?",          "a/x",             CYE_PATTERN_PATH));
+    assert_false(pattern_match("???",         "a/x",             CYE_PATTERN_PATH));
+    assert_false(pattern_match("[abc/]",      "/",               CYE_PATTERN_PATH));
+    assert_true(pattern_match("[abc/]/x",     "a/x",             CYE_PATTERN_PATH));
 }
 
 void test_no_flag_pathname(void) {
@@ -229,51 +229,51 @@ void test_no_flag_pathname(void) {
 
 
 void test_flag_period(void) {
-    assert_true(pattern_match(".hello", ".hello", CYE_PATTERN_PERIOD));
+    assert_true(pattern_match(".hello",  ".hello", CYE_PATTERN_PERIOD));
     assert_false(pattern_match("*hello", ".hello", CYE_PATTERN_PERIOD));
-    assert_true(pattern_match(".he*", ".hello", CYE_PATTERN_PERIOD));
-    assert_false(pattern_match("he*o", "hel.lo", CYE_PATTERN_PERIOD));
+    assert_true(pattern_match(".he*",    ".hello", CYE_PATTERN_PERIOD));
+    assert_false(pattern_match("he*o",   "hel.lo", CYE_PATTERN_PERIOD));
     
 }
 
 void test_no_flag_period(void) {
     assert_true(pattern_match(".hello", ".hello", 0));
     assert_true(pattern_match("*hello", ".hello", 0));
-    assert_true(pattern_match(".he*", ".hello", 0));
-    assert_true(pattern_match("he*o", "hel.lo", 0));
+    assert_true(pattern_match(".he*",   ".hello", 0));
+    assert_true(pattern_match("he*o",   "hel.lo", 0));
 }
 
 void test_flag_period_and_flag_pathname(void) {
     int flags = CYE_PATTERN_PERIOD | CYE_PATTERN_PATH;
-    assert_true(pattern_match("/.hello", "/.hello", flags));
-    assert_true(pattern_match("/.hel/.lo", "/.hel/.lo", flags));
-    assert_false(pattern_match("/*hel/.lo", "/.hel/.lo", flags));
+    assert_true(pattern_match("/.hello",       "/.hello",   flags));
+    assert_true(pattern_match("/.hel/.lo",     "/.hel/.lo", flags));
+    assert_false(pattern_match("/*hel/.lo",    "/.hel/.lo", flags));
 
-    assert_true(pattern_match("/*a*b*/*c*d*", "/ab/cd", flags));
+    assert_true(pattern_match("/*a*b*/*c*d*",  "/ab/cd",    flags));
 
-    assert_true(pattern_match("*a*b*/*c*d*", "ab/cd", flags));
+    assert_true(pattern_match("*a*b*/*c*d*",   "ab/cd",     flags));
 
-    assert_true(pattern_match("a*/", "a/", flags));
-    assert_true(pattern_match("a*****/", "a/", flags));
-    assert_true(pattern_match("a?/", "a/", flags));
-    assert_true(pattern_match("??????/", "a/", flags));
+    assert_true(pattern_match("a*/",           "a/",        flags));
+    assert_true(pattern_match("a*****/",       "a/",        flags));
+    assert_true(pattern_match("a?/",           "a/",        flags));
+    assert_true(pattern_match("??????/",       "a/",        flags));
 
-    assert_false(pattern_match("/*a*b*/*c*d*", "/a.b/c.d", flags));
-    assert_true(pattern_match("/*.*/*.*", "/a.b/c.d", flags));
-    assert_false(pattern_match("/.hel/*lo", "/.hel/.lo", flags));
-    assert_true(pattern_match("/.hel/.*", "/.hel/.lo", flags));
-    assert_true(pattern_match("/.*/.lo", "/.hel/.lo", flags));
-    assert_false(pattern_match("/he*o", "/hel.lo", flags));
-    assert_true(pattern_match("/he*o", "/hel;lo", flags));
+    assert_false(pattern_match("/*a*b*/*c*d*", "/a.b/c.d",  flags));
+    assert_true(pattern_match("/*.*/*.*",      "/a.b/c.d",  flags));
+    assert_false(pattern_match("/.hel/*lo",    "/.hel/.lo", flags));
+    assert_true(pattern_match("/.hel/.*",      "/.hel/.lo", flags));
+    assert_true(pattern_match("/.*/.lo",       "/.hel/.lo", flags));
+    assert_false(pattern_match("/he*o",        "/hel.lo",   flags));
+    assert_true(pattern_match("/he*o",         "/hel;lo",   flags));
 }
 
 void test_no_flag_period_and_flag_pathname(void) {
-    assert_true(pattern_match("/.hello", "/.hello", 0));
-    assert_true(pattern_match("/.hel/.lo", "/.hel/.lo", 0));
-    assert_true(pattern_match("/*hel/.lo", "/.hel/.lo", 0));
-    assert_true(pattern_match("/.hel/*lo", "/.hel/.lo", 0));
-    assert_true(pattern_match("/.hel/.*", "/.hel/.lo", 0));
-    assert_true(pattern_match("/.*/.lo", "/.hel/.lo", 0));
+    assert_true(pattern_match("/.hello",       "/.hello",   0));
+    assert_true(pattern_match("/.hel/.lo",     "/.hel/.lo", 0));
+    assert_true(pattern_match("/*hel/.lo",     "/.hel/.lo", 0));
+    assert_true(pattern_match("/.hel/*lo",     "/.hel/.lo", 0));
+    assert_true(pattern_match("/.hel/.*",      "/.hel/.lo", 0));
+    assert_true(pattern_match("/.*/.lo",       "/.hel/.lo", 0));
 }
 
 int main(int argc, char *argv[]) {
