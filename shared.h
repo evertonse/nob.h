@@ -6,16 +6,46 @@
 #define TESTS_FOLDER "tests/"
 #define TOOLS_FOLDER "tools/"
 
-#define assert_true(result)                                             \
-{                                                                       \
-    if ((result)) {                                                     \
-        trace_okay(file_fmt"\n\t[SUCCESS] %s", file_fmt_arg, #result);  \
-    } else {                                                            \
-        trace_error(file_fmt"\n\t[FAIL] %s", file_fmt_arg, #result);    \
-    }                                                                   \
+typedef DArray(ZString) String_DArray;
+
+static String_DArray errors = {0};
+
+#define assert_true(result)                                                     \
+{                                                                               \
+    if ((result)) {                                                             \
+        trace_okay(" [SUCCESS] %s\n\t"file_fmt, #result, file_fmt_arg);         \
+    } else {                                                                    \
+        da_append(&errors, tprintf("%s\n\t"file_fmt, #result, file_fmt_arg));   \
+        trace_error(" [FAIL] %s\n\t"file_fmt, #result, file_fmt_arg);           \
+    }                                                                           \
 }
 
 #define assert_false(result) assert_true(!(result))
+
+const char* ds_join(String_DArray da, ZString join);
+
+#define error_count_log_and_reset() error_log_and_reset(__FUNCTION__)
+
+void error_log_and_reset(ZString msg) {
+    if (errors.count == 0) {
+        trace_okay("NO ERRORS `%s`\n", msg);
+    } else {
+        trace_error("%d ERRORS `%s`\n%s", errors.count, msg, ds_join(errors, "\n\t"));
+    }
+    errors.count = 0;
+}
+
+const char* ds_join(String_DArray da, ZString join) {
+    DString ds = {0};
+    for (usz idx = 0; idx < da.count; idx += 1) {
+        if (idx > 0) {
+            ds_write(&ds, join);
+        }
+        ds_write(&ds, da.items[idx]);
+    }
+    ds_write_zero(&ds);
+    return ds.items;
+}
 
 // Tests are allowed to build the tools they may need for their testing
 // The tools are single C files residing in TOOLS_FOLDER

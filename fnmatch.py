@@ -1,8 +1,17 @@
-import glob
-import os
+import fnmatch as fn
 
-# Sample directory (make sure this directory exists and contains files)
-directory = 'sample_directory/'  # Adjust this path as needed
+# Sample list of filenames
+files = [
+    'data1.txt',
+    'data2.txt',
+    'image1.png',
+    'image2.jpg',
+    'report.pdf',
+    'notes.docx',
+    'data_backup_2023.zip',
+    'data1.csv',
+    'README.md'
+]
 
 # Different patterns to match
 patterns = [
@@ -17,8 +26,19 @@ patterns = [
     'data[1-2].*'     # Match files starting with 'data' followed by 1 or 2
 ]
 
-# Using glob to find files
+# Using fnmatch to filter files
 for pattern in patterns:
-    matched_files = glob.glob(os.path.join(directory, pattern))
+    matched_files = [f for f in files if fn.fnmatch(f, pattern)]
     print(f"Pattern: {pattern} -> Matched files: {matched_files}")
 
+# Python program to illustrate
+# fnmatch.fnmatch(filename, pattern)
+import fnmatch
+
+pattern = 'fnmatch_*.py'
+print ('Pattern :', pattern )
+print()
+
+files = os.listdir('.')
+for name in files:
+    print ('Filename: %-25s %s' % (name, fnmatch.fnmatch(name, pattern))

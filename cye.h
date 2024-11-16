@@ -431,11 +431,17 @@ typedef struct {
 typedef bool (*Cye_File_Filter)(const char *path, void *user_data);
 
 typedef enum {
-    CYE_FILE_TYPE_REGULAR = 0,
-    CYE_FILE_TYPE_DIRECTORY,
-    CYE_FILE_TYPE_SYMLINK,
-    CYE_FILE_TYPE_OTHER,
-} Cye_File_Type;
+    CYE_FILE_KIND_REGULAR = 0,
+    CYE_FILE_KIND_DIRECTORY,
+    CYE_FILE_KIND_SYMLINK,
+    CYE_FILE_KIND_OTHER,
+} Cye_File_Kind;
+
+typedef enum {
+    CYE_GLOB_SYNTAX_ERROR,
+    CYE_GLOB_NO_MATCH,
+    CYE_GLOB_MATCHED
+} Cye_Match_Result; // Don't know if we'll keep it
 
 typedef struct {
     time_t created_at;
@@ -495,6 +501,10 @@ typedef struct {
     void   (*free)(void* ptr);
     rawptr any;
 } Cye_Context;
+
+#define CYE_FNM_NOESCAPE (0x0001 << 0)
+#define CYE_FNM_PATHNAME (0x0001 << 1)
+#define CYE_FNM_PERIOD   (0x0001 << 2)
 
 
 /*..................................................................................
@@ -630,7 +640,7 @@ bool cye_file_write_all(const char *path, const void *data, usz size);
 bool cye_file_read_all(const char *path, Cye_DString *ds);
 
 // Get File Type
-Cye_File_Type cye_path_file_type(const char *path);
+Cye_File_Kind cye_path_file_type(const char *path);
 
 // Normalize Path ex: ///oi/hello/././.txt -> /oi/hello/.txt
 char* cye_path_temp_normalize(ZString path);
@@ -898,6 +908,9 @@ Cye_String_Slice cye_str_slice_make_len(const char *str, usz len);
 // Compare two string slices
 bool cye_str_slice_equals(Cye_String_Slice a, Cye_String_Slice b);
 
+// Compare a slice with a zstring
+bool cye_str_slice_equals_zstr(Cye_String_Slice a, const char* b);
+
 // Check if string slice contains substring
 bool cye_str_slice_contains(Cye_String_Slice haystack, Cye_String_Slice needle);
 
@@ -926,6 +939,10 @@ bool cye_str_slice_starts_with_zstr(Cye_String_Slice s, ZString prefix);
 bool cye_zstr_ends_with(ZString src, ZString ending);
 bool cye_zstr_starts_with(ZString src, ZString prefix);
 bool cye_zstr_match_pattern(ZString pattern, ZString str);
+
+bool cye_pattern_match(ZString pattern, ZString string, int flags);
+bool cye_is_pattern_well_formed(ZString pattern);
+Cye_Match_Result cye_glob_match(const char *pattern, const char *text);
 
 
 // TODO: Add String Slices Functions as we need
@@ -1831,14 +1848,14 @@ bool cye_copy_dir(const char *src_path, const char *dst_path) {
     Cye_DString dst_ds = {0};
     usz temp_checkpoint = cye_temp_save();
 
-    Cye_File_Type type = cye_path_file_type(src_path);
+    Cye_File_Kind type = cye_path_file_type(src_path);
     if (type < 0) {
         depth -= 1;
         return false;
     }
 
     switch (type) {
-        case CYE_FILE_TYPE_DIRECTORY: {
+        case CYE_FILE_KIND_DIRECTORY: {
             if (!cye_make_dirs(dst_path)) cye_result_defer(false);
             if (!cye_read_dir(src_path, &children)) cye_result_defer(false);
 
@@ -1859,7 +1876,7 @@ bool cye_copy_dir(const char *src_path, const char *dst_path) {
             }
         } break;
 
-        case CYE_FILE_TYPE_REGULAR: {
+        case CYE_FILE_KIND_REGULAR: {
             Cye_Log_Level old_level = cye_threshold_log_level;
             cye_set_trace_level(CYE_LOG_TRACE);
             bool copy_result = cye_copy_file(src_path, dst_path);
@@ -1871,11 +1888,11 @@ bool cye_copy_dir(const char *src_path, const char *dst_path) {
             }
         } break;
 
-        case CYE_FILE_TYPE_SYMLINK: {
+        case CYE_FILE_KIND_SYMLINK: {
             cye_trace_warn("TODO: Copying symlinks is not supported yet");
         } break;
 
-        case CYE_FILE_TYPE_OTHER: {
+        case CYE_FILE_KIND_OTHER: {
             cye_trace_error("Unsupported type of file %s", src_path);
             cye_result_defer(false);
         } break;
@@ -2004,14 +2021,14 @@ bool cye_file_append(const char* path, const void* data, usz count) {
 #ifndef _WIN32
     int fd = -1;
     isz bytes_written = 0;
-    
+
     // Open file for append
     fd = open(path, O_WRONLY | O_APPEND | O_CREAT, 0644);
     if (fd == -1) {
         cye_trace_error("Could not open file %s for append: %s", path, CYE_GET_ERROR_STRING);
         cye_result_defer(false);
     }
-    
+
     // Write the data
     bytes_written = write(fd, data, count);
     if (bytes_written == -1 || (usz)bytes_written != count) {
@@ -2022,7 +2039,7 @@ bool cye_file_append(const char* path, const void* data, usz count) {
 #else
     HANDLE file_handle = INVALID_HANDLE_VALUE;
     DWORD bytes_written = 0;
-    
+
     // Open file for append
     file_handle = CreateFileA(
         path,                     // path
@@ -2033,18 +2050,18 @@ bool cye_file_append(const char* path, const void* data, usz count) {
         FILE_ATTRIBUTE_NORMAL,    // file attributes
         NULL                      // template file
     );
-    
+
     if (file_handle == INVALID_HANDLE_VALUE) {
         cye_trace_error("Could not open file %s for append: %s", path, CYE_GET_ERROR_STRING);
         cye_result_defer(false);
     }
-    
+
     // Move file pointer to end (should be redundant with FILE_APPEND_DATA, but being thorough)
     if (SetFilePointer(file_handle, 0, NULL, FILE_END) == INVALID_SET_FILE_POINTER) {
         cye_trace_error("Could not seek to end of file %s: %s", path, CYE_GET_ERROR_STRING);
         cye_result_defer(false);
     }
-    
+
     // Write the data
     if (!WriteFile(file_handle, data, (DWORD)count, &bytes_written, NULL) || bytes_written != count) {
         cye_trace_error("Could not write to file %s: %s", path, CYE_GET_ERROR_STRING);
@@ -2141,7 +2158,7 @@ close:
     return result;
 }
 
-Cye_File_Type cye_path_file_type(const char *path) {
+Cye_File_Kind cye_path_file_type(const char *path) {
 #ifndef _WIN32
     struct stat statbuf;
     if (stat(path, &statbuf) < 0) {
@@ -2150,10 +2167,10 @@ Cye_File_Type cye_path_file_type(const char *path) {
     }
 
     switch (statbuf.st_mode & S_IFMT) {
-        case S_IFDIR:  return CYE_FILE_TYPE_DIRECTORY;
-        case S_IFREG:  return CYE_FILE_TYPE_REGULAR;
-        case S_IFLNK:  return CYE_FILE_TYPE_SYMLINK;
-        default:       return CYE_FILE_TYPE_OTHER;
+        case S_IFDIR:  return CYE_FILE_KIND_DIRECTORY;
+        case S_IFREG:  return CYE_FILE_KIND_REGULAR;
+        case S_IFLNK:  return CYE_FILE_KIND_SYMLINK;
+        default:       return CYE_FILE_KIND_OTHER;
     }
 #else // _WIN32
     DWORD attr = GetFileAttributesA(path);
@@ -2162,9 +2179,9 @@ Cye_File_Type cye_path_file_type(const char *path) {
         return -1;
     }
 
-    if (attr & FILE_ATTRIBUTE_DIRECTORY) return CYE_FILE_TYPE_DIRECTORY;
+    if (attr & FILE_ATTRIBUTE_DIRECTORY) return CYE_FILE_KIND_DIRECTORY;
     // TODO: detect symlinks on Windows (whatever that means on Windows anyway)
-    return CYE_FILE_TYPE_REGULAR;
+    return CYE_FILE_KIND_REGULAR;
 #endif // _WIN32
 }
 
@@ -2700,23 +2717,23 @@ TString cye_path_stem(ZString file_path) {
     static char path_buffer[PATH_MAX]; // TODO: May use this to not destruct the original buffer
     unused(path_buffer);
     if (file_path == NULL) return NULL;
-    
+
     char* result_buffer = cye_tstrdup(file_path);
-    
+
     // Handle special dots dir
     if (strcmp(result_buffer, ".") == 0 || strcmp(result_buffer, "..") == 0) {
         return result_buffer;
     }
-    
+
     // TODO: Check to see if it fucks up
     char *first_dot = strchr(result_buffer, '.');
     char *last_dot = strrchr(result_buffer, '.');
-    
+
     // No extension found
     if (first_dot == NULL) {
         return result_buffer;
     }
-    
+
     // Handle hidden files starting with a dot
     if (first_dot == result_buffer) {
         if (last_dot == first_dot) {
@@ -2730,14 +2747,14 @@ TString cye_path_stem(ZString file_path) {
             return result_buffer;
         }
     }
-    
+
     // Terminate string at appropriate dot position
     if (last) {
         *last_dot = '\0';
     } else {
         *first_dot = '\0';
     }
-    
+
     return result_buffer;
 
 }
@@ -2752,7 +2769,7 @@ ZString cye_path_dir_of(ZString file_path) {
     // If it's already a directory, return thyself
     Cye_Log_Level old_level = cye_threshold_log_level;
     cye_set_trace_level(CYE_LOG_NONE);
-    if (cye_path_file_type(file_path) == CYE_FILE_TYPE_DIRECTORY) {
+    if (cye_path_file_type(file_path) == CYE_FILE_KIND_DIRECTORY) {
         return file_path;
     }
     cye_set_trace_level(old_level);
@@ -2953,14 +2970,14 @@ bool cye_remove_file(ZString path) {
         return true;
     }
 
-    Cye_File_Type type = cye_path_file_type(path);
+    Cye_File_Kind type = cye_path_file_type(path);
 
-    if (type != CYE_FILE_TYPE_REGULAR) {
+    if (type != CYE_FILE_KIND_REGULAR) {
         cye_trace_error("`%s` exists but is not a regular file", path);
         return false;
     }
 
-    if (type == CYE_FILE_TYPE_DIRECTORY) {
+    if (type == CYE_FILE_KIND_DIRECTORY) {
         cye_trace_error("`%s` exists but is a directory, should we make a recursive remove function?", path);
         return false;
     }
@@ -3232,6 +3249,15 @@ bool cye_str_slice_equals(Cye_String_Slice a, Cye_String_Slice b) {
     return memcmp(a.data, b.data, a.count) == 0;
 }
 
+bool cye_str_slice_equals_zstr(Cye_String_Slice a, const char* b) {
+    usz b_count = strlen(b);
+    if (a.count != b_count) {
+        return false;
+    } else {
+        return memcmp(a.data, b, a.count) == 0;
+    }
+}
+
 // Check if string slice contains substring
 bool cye_str_slice_contains(Cye_String_Slice haystack, Cye_String_Slice needle) {
     if (needle.count > haystack.count) return false;
@@ -3341,6 +3367,7 @@ bool cye_zstr_starts_with(ZString src, ZString prefix) {
 }
 
 bool cye_zstr_match_pattern(ZString pattern, ZString str) {
+    cye_trace_warn("`%s` deprecated in favor or `cye_pattern_match`", __FUNCTION__);
     // End of pattern
     if (*pattern == '\0') return *str == '\0';
 
@@ -3365,6 +3392,348 @@ bool cye_zstr_match_pattern(ZString pattern, ZString str) {
 
     return false;
 }
+
+
+
+// NOTE: Based on this steal
+// https://github.com/cacharle/globule/blob/d9ac95c55750dcb07dc41e87d4bc760a1ac3032e/src/fnmatch.c#L6C3-L6C4
+bool cye_pattern_match(ZString pattern, ZString text, int flags) {
+    if(!cye_is_pattern_well_formed(pattern)) {
+        cye_trace_warn("Malformed pattern (%s) you may check this prior with `cye_is_pattern_well_formed`", pattern);
+        return false;
+    }
+
+    if (flags & CYE_FNM_PERIOD && *text == '.' && *pattern != '.') {
+        return false;
+    }
+    if (*pattern == '\0') {
+        return *text == '\0';
+    }
+    if (*text == '\0') {
+        return strcmp(pattern, "*") == 0;
+    }
+
+    // if (flags & CYE_FNM_PATHNAME && *text == '/') {
+    //     if (*pattern == *text) {
+    //         if (flags & CYE_FNM_PERIOD
+    //             && text[1] == '.'
+    //             && pattern[1] != '.')
+    //         {
+    //             return false;
+    //         }
+    //         return cye_pattern_match(pattern + 1, text + 1, flags);
+    //     }
+    //     return false;
+    // }
+
+    if (flags & CYE_FNM_PATHNAME && *text == '/') {
+        if (*pattern == *text) {
+            return cye_pattern_match(pattern + 1, text + 1, flags);
+        } else if (*pattern == '*' || *pattern == '?'){
+            return cye_pattern_match(pattern + 1, text, flags);
+        }
+        return false;
+    }
+
+    if (flags & CYE_FNM_PERIOD && *text == '.') {
+        if (*pattern == *text) {
+            return cye_pattern_match(pattern + 1, text + 1, flags);
+        }
+        return false;
+    }
+
+    switch (*pattern) {
+    // TODO:
+    // case '\\':
+    //     if (!(flags & CYE_FNM_NOESCAPE))
+    //         pattern++;
+    //     break;
+    case '*':
+        if (cye_pattern_match(pattern + 1, text, flags)) {
+            return true;
+        }
+        if (cye_pattern_match(pattern, text + 1, flags)) {
+            return true;
+        }
+        return cye_pattern_match(pattern + 1, text + 1, flags);
+    case '?':
+        return cye_pattern_match(pattern + 1, text + 1, flags);
+    case '[':
+        pattern++;
+        bool complement = *pattern == '!';
+        if (complement) {
+            pattern++;
+        }
+        const char *closing = strchr(pattern + 1, ']') + 1;
+        if (*pattern == *text) { // has to contain at least one character
+            return !complement ? cye_pattern_match(closing, text + 1, flags) : false;
+        }
+        pattern++;
+        for (; *pattern != ']'; pattern++) {
+            if (pattern[0] == '-' && pattern + 2 != closing) {
+                char range_start = pattern[-1];
+                char range_end = pattern[1];
+                if (*text >= range_start && *text <= range_end) {
+                    return !complement ? cye_pattern_match(closing, text + 1, flags) : false;
+                }
+                pattern++;
+            } else if (*pattern == *text) {
+                return !complement ? cye_pattern_match(closing, text + 1, flags) : false;
+            }
+        }
+        return !complement ? false : cye_pattern_match(closing, text + 1, flags);
+    }
+    if (*pattern == *text) {
+        return cye_pattern_match(pattern + 1, text + 1, flags);
+    }
+    return false;
+}
+
+bool cye_is_pattern_well_formed(ZString pattern) {
+    bool in_class = false;
+    for (usz idx = 0; pattern[idx] != '\0'; idx++) {
+        if (pattern[idx] == '[') {
+            idx++;
+            if (pattern[idx] == '\0') {
+                return false;
+            }
+            idx++;
+            if (pattern[idx] == '\0') {
+                return false;
+            }
+            in_class = true;
+        }
+        if (pattern[idx] == ']') {
+            in_class = false;
+        }
+    }
+    if (in_class) {
+        return false;
+    }
+    return true;
+}
+
+Cye_Match_Result cye_glob_match(const char *pattern, const char *text) {
+    cye_trace_warn("`%s` untested, this one does't consider period `.` and slash `/` special.", __FUNCTION__);
+    while (*pattern != '\0' && *text != '\0') {
+        switch (*pattern) {
+        case '?': {
+            pattern += 1;
+            text += 1;
+        } break;
+
+        case '*': {
+            while (*(pattern + 1) == '*') pattern++;
+            Cye_Match_Result result = cye_glob_match(pattern + 1, text);
+            if (result != CYE_GLOB_NO_MATCH) {
+                return result;
+            }
+            text += 1;
+        } break;
+
+        case '[': {
+            bool matched = false;
+            bool negate = false;
+
+            pattern += 1; // skipping [
+            if (*pattern == '\0') {
+                return CYE_GLOB_SYNTAX_ERROR; // unclosed [
+            }
+
+            if (*pattern == '!') {
+                negate = true;
+                pattern += 1;
+                if (*pattern == '\0') {
+                    return CYE_GLOB_SYNTAX_ERROR; // unclosed [
+                }
+            }
+
+            char prev = *pattern;
+            matched |= prev == *text;
+            pattern += 1;
+
+            while (*pattern != ']' && *pattern != '\0') {
+                switch (*pattern) {
+                case '-': {
+                    pattern += 1;
+                    switch (*pattern) {
+                    case ']':
+                        matched |= '-' == *text;
+                        break;
+                    case '\0':
+                        return CYE_GLOB_SYNTAX_ERROR; // unclosed [
+                    default: {
+                        matched |= prev <= *text && *text <= *pattern;
+                        prev = *pattern;
+                        pattern += 1;
+                    }
+                    }
+                } break;
+                default: {
+                    prev = *pattern;
+                    matched |= prev == *text;
+                    pattern += 1;
+                }
+                }
+            }
+
+            if (*pattern != ']') {
+                return CYE_GLOB_SYNTAX_ERROR; // unclosed [
+            }
+            if (negate) {
+                matched = !matched;
+            }
+            if (!matched) {
+                return CYE_GLOB_NO_MATCH;
+            }
+
+            pattern += 1;
+            text += 1;
+        } break;
+
+        case '\\':
+            pattern += 1;
+            if (*pattern == '\0') {
+                return CYE_GLOB_SYNTAX_ERROR; // unfinished escape
+            }
+        // fallthrough
+        default: {
+            if (*pattern == *text) {
+                pattern += 1;
+                text += 1;
+            } else {
+                return CYE_GLOB_NO_MATCH;
+            }
+        }
+        }
+    }
+
+    if (*text == '\0') {
+        while (*pattern == '*') {
+            pattern += 1;
+        }
+        if (*pattern == '\0') {
+            return CYE_GLOB_MATCHED;
+        }
+    }
+
+    return CYE_GLOB_NO_MATCH;
+}
+
+Cye_Match_Result cye_glob_match_with_flags(const char *pattern, const char *text, int flags) {
+    while (*pattern != '\0' && *text != '\0') {
+
+        if (flags & CYE_FNM_PATHNAME && *text == '/') {
+            goto normal_case;
+        }
+        if (flags & CYE_FNM_PERIOD && *text == '.') {
+            goto normal_case;
+        }
+        switch (*pattern) {
+            case '?': {
+                pattern += 1;
+                text += 1;
+            } break;
+
+            case '*': {
+                Cye_Match_Result result = cye_glob_match_with_flags(pattern + 1, text, flags);
+                if (result != CYE_GLOB_NO_MATCH) {
+                    return result;
+                }
+                text += 1;
+            } break;
+
+            case '[': {
+                bool matched = false;
+                bool negate = false;
+
+                pattern += 1; // skipping [
+                if (*pattern == '\0') {
+                    return CYE_GLOB_SYNTAX_ERROR; // unclosed [
+                }
+
+                if (*pattern == '!') {
+                    negate = true;
+                    pattern += 1;
+                    if (*pattern == '\0') {
+                        return CYE_GLOB_SYNTAX_ERROR; // unclosed [
+                    }
+                }
+
+                char prev = *pattern;
+                matched |= prev == *text;
+                pattern += 1;
+
+                while (*pattern != ']' && *pattern != '\0') {
+                    switch (*pattern) {
+                    case '-': {
+                        pattern += 1;
+                        switch (*pattern) {
+                        case ']':
+                            matched |= '-' == *text;
+                            break;
+                        case '\0':
+                            return CYE_GLOB_SYNTAX_ERROR; // unclosed [
+                        default: {
+                            matched |= prev <= *text && *text <= *pattern;
+                            prev = *pattern;
+                            pattern += 1;
+                        }
+                        }
+                    } break;
+                    default: {
+                        prev = *pattern;
+                        matched |= prev == *text;
+                        pattern += 1;
+                    }
+                    }
+                }
+
+                if (*pattern != ']') {
+                    return CYE_GLOB_SYNTAX_ERROR; // unclosed [
+                }
+                if (negate) {
+                    matched = !matched;
+                }
+                if (!matched) {
+                    return CYE_GLOB_NO_MATCH;
+                }
+
+                pattern += 1;
+                text += 1;
+            } break;
+
+            case '\\':
+                pattern += 1;
+                if (*pattern == '\0') {
+                    return CYE_GLOB_SYNTAX_ERROR; // unfinished escape
+                }
+            // fallthrough
+            default: {
+                normal_case:
+                if (*pattern == *text) {
+                    pattern += 1;
+                    text += 1;
+                } else {
+                    return CYE_GLOB_NO_MATCH;
+                }
+            }
+        }
+    }
+
+    if (*text == '\0') {
+        while (*pattern == '*') {
+            pattern += 1;
+        }
+        if (*pattern == '\0') {
+            return CYE_GLOB_MATCHED;
+        }
+    }
+
+    return CYE_GLOB_NO_MATCH;
+}
+
+
 
 //----------------------------------------------------------------------------------
 //  Dynamic String Implementation
@@ -3712,7 +4081,7 @@ char *nob_win32_error_message(DWORD err) {
 #define DArray              Cye_DArray
 #define Path_DArray         Cye_Path_DArray
 #define File_Filter         Cye_File_Filter
-#define File_Type           Cye_File_Type
+#define File_Kind           Cye_File_Kind
 #define File_Stats          Cye_File_Stats
 #define DString             Cye_DString
 
@@ -3912,6 +4281,7 @@ char *nob_win32_error_message(DWORD err) {
 #define str_slice_strip_right      cye_str_slice_strip_right
 #define str_slice_make_len         cye_str_slice_make_len
 #define str_slice_equals           cye_str_slice_equals
+#define str_slice_equals_zstr      cye_str_slice_equals_zstr
 #define str_slice_contains         cye_str_slice_contains
 #define str_slice_split            cye_str_slice_split
 #define str_slice_split_first      cye_str_slice_split_first
@@ -3922,12 +4292,17 @@ char *nob_win32_error_message(DWORD err) {
 
 #define ss_fmt     cye_ss_fmt
 #define ss_fmt_arg cye_ss_fmt_arg
+
 //------------------------------------------------------------------------------------
 //  ZString Short Names
 //------------------------------------------------------------------------------------
 #define zstr_ends_with     cye_zstr_ends_with
 #define zstr_starts_with   cye_zstr_starts_with
 #define zstr_match_pattern cye_zstr_match_pattern
+
+#define pattern_match          cye_pattern_match
+#define is_pattern_well_formed cye_is_pattern_well_formed
+#define glob_match             cye_glob_match
 
 
 //----------------------------------------------------------------------------------

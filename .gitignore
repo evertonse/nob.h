@@ -1,3 +1,4 @@
+__pycache__
 nob
 nob.old
 nob.exe
@@ -11,3 +12,5 @@ build*/
 *.out
 *.todo
 *TODOS
+.last_yank.txt
+.trails

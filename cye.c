@@ -3,7 +3,7 @@
 #include "shared.h"
 
 const char *test_names[] = {
-    // "matching",
+    "matching",
     "dynamic_array",
     "read_dirs",
     "sort",
