@@ -10,12 +10,13 @@ int main() {
         "cmd",           // Windows built-in
         "sh",           // Unix built-in
         "gcc",          // Usually in PATH if installed
+        "dmenu",
         "nonexistent",  // Should fail
         "./local.exe",  // Local path
         "../bin/tool"   // Relative path
     };
     
-    for (size_t i = 0; i < sizeof(executables)/sizeof(executables[0]); i++) {
+    for (usz i = 0; i < sizeof(executables)/sizeof(executables[0]); i++) {
         if (find_executable(executables[i], &path)) {
             printf("Found %s at: %s\n", executables[i], path.items);
         } else {
@@ -23,8 +24,6 @@ int main() {
         }
     }
     
-
     ds_free(path);
-    exit(1);
     return 0;
 }
