@@ -12,3 +12,4 @@
 - [ ] Make Glob test using capoute output
 - [ ] Simplest Regex implementation ?
 - [ ] Way of getting all #include files from a `.h|.c` into a DArray, for caching
+- [ ] Maybe each da_array should have it's own allocator?

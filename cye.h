@@ -312,7 +312,7 @@
 
 
 #ifndef CYE_DARRAY_INIT_CAP
-#   define CYE_DARRAY_INIT_CAP 256
+#   define CYE_DARRAY_INIT_CAP (2*PATH_MAX)
 #endif
 
 #ifndef CYE_DARRAY_CAP_MULTIPLIER
@@ -553,8 +553,8 @@ typedef struct {
 //  Process and File Declarations
 //------------------------------------------------------------------------------------
 
-Cye_File_Handle cye_file_open_for_read(const char *path);
-Cye_File_Handle cye_file_open_for_write(const char *path);
+Cye_File_Handle cye_file_open_for_read(ZString path);
+Cye_File_Handle cye_file_open_for_write(ZString path);
 void cye_file_close(Cye_File_Handle fh);
 bool cye_process_wait_all(Cye_Process_DArray procs);
 bool cye_process_wait_all_and_reset(Cye_Process_DArray *procs);
@@ -637,7 +637,7 @@ Cye_Context cye_default_context(void);
 
 u0 cye_set_default_context(Cye_Context ctx);
 
-char* cye_tstrdup(const char *cstr);
+char* cye_tstrdup(ZString cstr);
 void* cye_talloc(usz size);
 void* cye_trealloc(void *ptr, usz size);
 void  cye_tfree(rawptr ptr);
@@ -652,11 +652,11 @@ void cye_temp_rewind(usz checkpoint);
 //  Path Declarations
 //------------------------------------------------------------------------------------
 
-bool cye_make_dir_if_not_exists(const char *path);
-bool cye_copy_file(const char *src_path, const char *dst_path);
-bool cye_copy_dir(const char *src_path, const char *dst_path);
+bool cye_make_dir_if_not_exists(ZString path);
+bool cye_copy_file(ZString src_path, ZString dst_path);
+bool cye_copy_dir(ZString src_path, ZString dst_path);
 bool cye_read_dir_filtered(
-    const char *parent, Cye_Path_DArray *children,
+    ZString parent, Cye_Path_DArray *children,
     bool use_parent, Cye_File_Filter filter, void *user_data
 );
 
@@ -669,14 +669,14 @@ bool cye_file_append(const char* path, const void* data, usz count);
 bool cye_file_append_zstr(const char* path, const char* str);
 
 // Write bytes to a file, creating if it doesnt exist
-bool cye_file_write_all(const char *path, const void *data, usz size);
+bool cye_file_write_all(ZString path, const void *data, usz size);
 #define cye_file_write_all_zstr(path, zstring) cye_file_write_all(path, zstring, strlen(zstring))
 
 // Read contents of file into a Dynamic String
-bool cye_file_read_all(const char *path, Cye_DString *ds);
+bool cye_file_read_all(ZString path, Cye_DString *ds);
 
 // Get File Type
-Cye_File_Kind cye_path_file_kind(const char *path);
+Cye_File_Kind cye_path_file_kind(ZString path);
 
 // Normalize Path ex: ///oi/hello/././.txt -> /oi/hello/.txt
 char* cye_path_temp_normalize(ZString path);
@@ -701,11 +701,11 @@ char* cye_path_create_from_array(ZString paths[], usz paths_count);
 })
 
 
-ZString cye_path_base_name(const char *path);
+ZString cye_path_base_name(ZString path);
 ZString cye_path_expand_user(ZString path);  // Expand ~ and ~user to full home directory path
 ZString cye_path_expand_vars(ZString path);  // Expand environment variables
 
-int  cye_needs_rebuild_from_buf(const char *output_path, const char **input_paths, usz input_paths_count);
+int  cye_needs_rebuild_from_buf(ZString output_path, ZString *input_paths, usz input_paths_count);
 
 #define cye_needs_rebuild(output_path, ...)                    \
     cye_needs_rebuild_from_buf(                                \
@@ -715,9 +715,9 @@ int  cye_needs_rebuild_from_buf(const char *output_path, const char **input_path
 
 
 TString cye_path_temp_cwd(void);                                  // Get current working directory
-bool cye_path_set_cwd(const char *path);                          // Change current working directory
+bool cye_path_set_cwd(ZString path);                          // Change current working directory
 
-b32  cye_file_exists(const char *file_path);
+b32  cye_file_exists(ZString file_path);
 bool cye_file_stats(const char* path, Cye_File_Stats* stats);     // Get file stats, can use ctime() to get certain fields as strings
 bool cye_is_absolute(ZString path);                               // Check if path  is absolute
 bool cye_is_relative(ZString path);                               // Check if path  is relative
@@ -943,7 +943,7 @@ void cye_pipe_close_handle(Cye_Pipe_Handle* pipe);
 
 
 
-Cye_String_Slice cye_str_slice_make(const char *str);
+Cye_String_Slice cye_str_slice_make(ZString str);
 
 // Trim whitespace from both ends
 Cye_String_Slice cye_str_slice_trim(Cye_String_Slice s);
@@ -958,7 +958,7 @@ Cye_String_Slice cye_str_slice_strip_left(Cye_String_Slice s);
 Cye_String_Slice cye_str_slice_strip_right(Cye_String_Slice s);
 
 // Create string slice from string and explicit length
-Cye_String_Slice cye_str_slice_make_len(const char *str, usz len);
+Cye_String_Slice cye_str_slice_make_len(ZString str, usz len);
 
 // Compare two string slices
 bool cye_str_slice_equals(Cye_String_Slice a, Cye_String_Slice b);
@@ -971,6 +971,8 @@ bool cye_str_slice_contains(Cye_String_Slice haystack, Cye_String_Slice needle);
 
 // Split string slice by delimiter into a Dynamic Array
 Cye_String_Slice_DArray cye_str_slice_split(Cye_String_Slice s, Cye_String_Slice delim);
+Cye_String_Slice_DArray cye_str_slice_split_zstr(Cye_String_Slice s, ZString delim);
+
 
 // Split string slice at first occurrence of delimiter
 void cye_str_slice_split_first(Cye_String_Slice s, char delim, Cye_String_Slice *before, Cye_String_Slice *after);
@@ -994,6 +996,7 @@ bool cye_str_slice_starts_with_zstr(Cye_String_Slice s, ZString prefix);
 bool cye_zstr_ends_with(ZString src, ZString ending);
 bool cye_zstr_starts_with(ZString src, ZString prefix);
 bool cye_zstr_match_pattern(ZString pattern, ZString str);
+ZString cye_zstr_ordinal(int n);
 
 bool cye_pattern_match(ZString pattern, ZString string, int flags);
 bool cye_is_pattern_well_formed(ZString pattern);
@@ -1015,19 +1018,19 @@ Cye_Match_Result cye_glob_match(ZString pattern, ZString text);
 
 #define cye_ds_write_zstr(ds, zstr)   \
     do {                              \
-        const char *s = (zstr);       \
+        ZString s = (zstr);       \
         usz n = strlen(s);            \
         cye_da_append_buf(ds, s, n);  \
     } while (0)
 
 #define cye_ds_write(ds, ...)                                               \
     do {                                                                    \
-        const char *cye_tmp_strs[] = {__VA_ARGS__};                         \
+        ZString cye_tmp_strs[] = {__VA_ARGS__};                         \
         for (usz idx = 0;                                                   \
              idx < sizeof(cye_tmp_strs) / sizeof(cye_tmp_strs[0]);          \
              idx++)                                                         \
         {                                                                   \
-            const char *s = cye_tmp_strs[idx];                              \
+            ZString s = cye_tmp_strs[idx];                              \
             usz n = strlen(s);                                              \
             cye_da_append_buf(ds, s, n);                                    \
         }                                                                   \
@@ -1054,11 +1057,11 @@ void cye_ds_printf(Cye_DString *ds, ZString fmt, ...);
 //  Mathematics Declarations
 //----------------------------------------------------------------------------------
 #ifndef cye_max
-#   define cye_max(value1, value2) ((value1) > (value2)) ? (value1) : (value2);
+#   define cye_max(value1, value2) ((value1) > (value2)) ? (value1) : (value2)
 #endif
 
 #ifndef cye_min
-#   define cye_min(value1, value2) ((value1) < (value2)) ? (value1) : (value2);
+#   define cye_min(value1, value2) ((value1) < (value2)) ? (value1) : (value2)
 #endif
 
 // Clamp float value
@@ -1084,7 +1087,7 @@ int cye_float_equals(f32 x, f32 y);
 //  Utils Declarations
 //------------------------------------------------------------------------------------
 void cye_set_trace_level(Cye_Log_Level level);
-void cye_trace_log(Cye_Log_Level level, const char *fmt, ...);
+void cye_trace_log(Cye_Log_Level level, ZString fmt, ...);
 #define cye_trace_info(...)  cye_trace_log(CYE_LOG_INFO,    __VA_ARGS__)
 #define cye_trace_okay(...)  cye_trace_log(CYE_LOG_OKAY,    __VA_ARGS__)
 #define cye_trace_error(...) cye_trace_log(CYE_TRACE_ERROR,   __VA_ARGS__)
@@ -1293,7 +1296,7 @@ TString cye_ds_tstring(Cye_DString ds);
     }                                                                   \
 } while (0)
 
-const char *cye_cpu_architecture(void);
+ZString cye_cpu_architecture(void);
 
 #endif // _CYE_H_
 
@@ -1454,7 +1457,7 @@ bool cye_process_wait(Cye_Process proc) {
 //------------------------------------------------------------------------------------
 void cye_ds_write_cmd(Cye_DString *ds, Cye_Command cmd) {
     for (usz i = 0; i < cmd.count; ++i) {
-        const char *arg = cmd.items[i];
+        ZString arg = cmd.items[i];
         if (arg == NULL) break;
         if (i > 0) cye_ds_write_zstr(ds, " ");
         if (!strchr(arg, ' ')) {
@@ -1636,18 +1639,18 @@ bool cye_cmd_run_sync_capture_and_reset(Cye_Command* cmd, Cye_Capture_Result* re
     bool success = false;
     Cye_Pipe pipe_out = CYE_INVALID_PIPE;
     Cye_Pipe pipe_err = CYE_INVALID_PIPE;
-    
+
     // Create pipes for stdout and stderr
     pipe_out = cye_pipe_open();
     if (!cye_is_pipe_valid(pipe_out)) {
         goto cleanup;
     }
-    
+
     pipe_err = cye_pipe_open();
     if (!cye_is_pipe_valid(pipe_err)) {
         goto cleanup;
     }
-    
+
     // Run the command with redirected output
     Cye_Process p = cye_cmd_run_async_redirect_and_reset(
         cmd,
@@ -1656,34 +1659,34 @@ bool cye_cmd_run_sync_capture_and_reset(Cye_Command* cmd, Cye_Capture_Result* re
             .err = &pipe_err.write
         }
     );
-    
+
     if (p == CYE_INVALID_PROCESS) {
         goto cleanup;
     }
-    
+
     // Close write ends after starting the process
     cye_pipe_close_handle(&pipe_out.write);
     cye_pipe_close_handle(&pipe_err.write);
-    
+
     // Read from both pipes
     char buffer[1024];
     usz bytes_read;
-    
+
     // Read from stderr
     while (cye_pipe_read(pipe_err.read, buffer, sizeof(buffer) - 1, &bytes_read) && bytes_read > 0) {
         cye_ds_write_buf(&result->stderr, buffer, bytes_read);
     }
     cye_ds_write_zero(&result->stderr);
-    
+
     // Read from stdout
     while (cye_pipe_read(pipe_out.read, buffer, sizeof(buffer) - 1, &bytes_read) && bytes_read > 0) {
         cye_ds_write_buf(&result->stdout, buffer, bytes_read);
     }
     cye_ds_write_zero(&result->stdout);
-    
+
     // Wait for process completion
     success = cye_process_wait(p);
-    
+
 cleanup:
     if (cye_is_pipe_valid(pipe_out)) {
         cye_pipe_close(pipe_out);
@@ -1691,14 +1694,14 @@ cleanup:
     if (cye_is_pipe_valid(pipe_err)) {
         cye_pipe_close(pipe_err);
     }
-    
+
     return success;
 }
 
 
 // The implementation idea is stolen from https://github.com/zhiayang/nabs
 void cye__rebuild_ourselves(ZString source_path, int argc, ZString *argv) {
-    const char *binary_path = cye_shift(argv, argc);
+    ZString binary_path = cye_shift(argv, argc);
 #ifdef _WIN32
     // On Windows executables almost always invoked without extension, so
     // it's ./nob, not ./nob.exe. For renaming the extension is a must.
@@ -1717,7 +1720,7 @@ void cye__rebuild_ourselves(ZString source_path, int argc, ZString *argv) {
 
     Cye_Command cmd = {0};
 
-    const char *old_binary_path = cye_tprintf("%s.old", binary_path);
+    ZString old_binary_path = cye_tprintf("%s.old", binary_path);
 
     if (!cye_path_rename(binary_path, old_binary_path)) {
         exit(1);
@@ -1758,7 +1761,7 @@ u0 cye_set_default_context(Cye_Context ctx) {
     cye_panic("YAY");
 }
 
-TString cye_tstrdup(const char *cstr) {
+TString cye_tstrdup(ZString cstr) {
     usz n = strlen(cstr);
     TString result = (TString)cye_talloc(n + 1);
     cye_assert_msg(result != NULL, "Please increase CYE_TEMP_CAPACITY (%zu bytes)", CYE_TEMP_CAPACITY);
@@ -1770,7 +1773,6 @@ TString cye_tstrdup(const char *cstr) {
 
 // TODO: Check out arena allocator
 rawptr cye_talloc(usz size) {
-
     if (cye_temp_data.size + size > CYE_TEMP_CAPACITY) return NULL;
     rawptr result = &cye_temp_data.buffer[cye_temp_data.size];
     cye_temp_data.last  = result;
@@ -1878,7 +1880,7 @@ void cye_temp_rewind(usz checkpoint) {
 //  Path Functions Implementation
 //------------------------------------------------------------------------------------
 
-bool cye_make_dir_if_not_exists(const char *path) {
+bool cye_make_dir_if_not_exists(ZString path) {
 #ifdef _WIN32
     int result = mkdir(path);
 #else
@@ -1897,7 +1899,7 @@ bool cye_make_dir_if_not_exists(const char *path) {
     return true;
 }
 
-bool cye_copy_file(const char *src_path, const char *dst_path) {
+bool cye_copy_file(ZString src_path, ZString dst_path) {
     cye_trace_info("Copying %s -> %s", src_path, dst_path);
 #ifndef _WIN32
     int src_fd = -1;
@@ -1960,7 +1962,7 @@ defer:
 }
 
 
-bool cye_copy_dir(const char *src_path, const char *dst_path) {
+bool cye_copy_dir(ZString src_path, ZString dst_path) {
     static int depth = 0;
 
     depth += 1;
@@ -2043,19 +2045,20 @@ defer:
 
 
 bool cye_read_dir_filtered(
-    const char *parent, Cye_Path_DArray *children,
+    ZString parent, Cye_Path_DArray *children,
     bool use_parent, Cye_File_Filter filter, void *user_data
 ) {
     cye_assert(parent);
     bool result = true;
 
     //
-    // We Might blow the the stack with this (`char[PATH_MAX+1]`)
+    // We Might blow the the stack with this (`char[PATH_MAX+1]`).
     // In case of recursive calls like glob functions
     // but sure, we can linearize those, although it'd be slower
-    // because of two loops instead of one,
-    // one to get the `read_dir_filtered` then another to see if any files inside
-    // children are directories to finally call `read_dir_filtered` on those again
+    // because of two loops instead of one (in the way that I'm thinking),
+    // One loop to get the `read_dir_filtered` then another loop to see
+    // if any files inside children are directories to finally call
+    // `read_dir_filtered` on those again
     //
     char full_path[PATH_MAX+1];
 
@@ -2071,7 +2074,7 @@ bool cye_read_dir_filtered(
     errno = 0;
     struct dirent *ent = readdir(dir);
     while (ent != NULL) {
-        const char *path = ent->d_name;
+        ZString path = ent->d_name;
         if (use_parent) {
             strcpy(full_path, parent);
             if(!cye_zstr_ends_with(full_path, PATH_SEPARATOR)) {
@@ -2085,7 +2088,7 @@ bool cye_read_dir_filtered(
             cye_da_append(children, cye_tstrdup(path));
         }
 
-        *full_path = 0;
+        *full_path = '\0'; // Just to be sure
         ent = readdir(dir);
     }
 
@@ -2120,7 +2123,7 @@ defer:
 
     // Read all entries
     do {
-        const char *path = find_data.cFileName;
+        ZString path = find_data.cFileName;
         if (use_parent) {
             strcpy(full_path, parent);
             if(!cye_zstr_ends_with(full_path, PATH_SEPARATOR)) {
@@ -2231,7 +2234,7 @@ bool cye_file_append_zstr(const char* path, const char* str) {
 
 
 // TODO: Check this for windows
-bool cye_file_write_all(const char *path, const void *data, usz size) {
+bool cye_file_write_all(ZString path, const void *data, usz size) {
     bool result = true;
 
     FILE *f = fopen(path, "wb");
@@ -2246,7 +2249,7 @@ bool cye_file_write_all(const char *path, const void *data, usz size) {
     //     ^
     //     data
 
-    const char *buf = data;
+    ZString buf = data;
     while (size > 0) {
         usz n = fwrite(buf, 1, size, f);
         if (ferror(f)) {
@@ -2263,7 +2266,7 @@ defer:
 }
 
 // TODO: Check this for windows
-bool cye_file_read_all(const char *path, Cye_DString *ds) {
+bool cye_file_read_all(ZString path, Cye_DString *ds) {
     bool result = true;
 
     FILE *f = fopen(path, "rb");
@@ -2297,7 +2300,7 @@ close:
     return result;
 }
 
-Cye_File_Kind cye_path_file_kind(const char *path) {
+Cye_File_Kind cye_path_file_kind(ZString path) {
 #ifndef _WIN32
     struct stat statbuf;
     if (stat(path, &statbuf) < 0) {
@@ -2534,7 +2537,7 @@ ZString cye_path_expand_user(ZString path) {
 
 ZString cye_path_expand_vars(ZString path) { cye_panic("TODO");}
 
-int cye_needs_rebuild_from_buf(const char *output_path, const char **input_paths, usz input_paths_count) {
+int cye_needs_rebuild_from_buf(ZString output_path, ZString *input_paths, usz input_paths_count) {
 #ifndef _WIN32
     struct stat statbuf = {0};
 
@@ -2547,7 +2550,7 @@ int cye_needs_rebuild_from_buf(const char *output_path, const char **input_paths
     int output_path_time = statbuf.st_mtime;
 
     for (usz i = 0; i < input_paths_count; ++i) {
-        const char *input_path = input_paths[i];
+        ZString input_path = input_paths[i];
         if (stat(input_path, &statbuf) < 0) {
             // NOTE: non-existing input is an error cause it is needed for building in the first place
             cye_trace_log(CYE_TRACE_ERROR, "could not stat %s: %s", input_path, CYE_GET_ERROR_STRING);
@@ -2578,7 +2581,7 @@ int cye_needs_rebuild_from_buf(const char *output_path, const char **input_paths
     }
 
     for (usz i = 0; i < input_paths_count; ++i) {
-        const char *input_path = input_paths[i];
+        ZString input_path = input_paths[i];
         HANDLE input_path_fd = CreateFile(input_path, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_READONLY, NULL);
         if (input_path_fd == INVALID_HANDLE_VALUE) {
             // NOTE: non-existing input is an error cause it is needed for building in the first place
@@ -2627,7 +2630,7 @@ TString cye_path_temp_cwd(void) {
 #endif // _WIN32
 }
 
-bool cye_path_set_cwd(const char *path) {
+bool cye_path_set_cwd(ZString path) {
 #ifndef _WIN32
     if (chdir(path) < 0) {
         cye_trace_error("could not set current directory to %s: %s", path, CYE_GET_ERROR_STRING);
@@ -2644,7 +2647,7 @@ bool cye_path_set_cwd(const char *path) {
 }
 
 
-b32 cye_file_exists(const char *file_path) {
+b32 cye_file_exists(ZString file_path) {
 #ifndef _WIN32
     struct stat statbuf;
     if (stat(file_path, &statbuf) < 0) {
@@ -2729,15 +2732,15 @@ bool cye_is_executable(ZString path) {
 #ifdef _WIN32
     DWORD attr = GetFileAttributesA(path);
     if (attr == INVALID_FILE_ATTRIBUTES) return false;
-    
+
     // Check if it's a directory
     if (attr & FILE_ATTRIBUTE_DIRECTORY) return false;
-    
+
     return true;
 #else
     struct stat st;
     if (stat(path, &st) != 0) return false;
-    
+
     // Check if it's a regular file and has execute permission
     return S_ISREG(st.st_mode) && (st.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH));
 #endif
@@ -2753,7 +2756,7 @@ static const char* EXECUTABLE_EXTENSIONS[] = {".exe", ".com", ".bat", ".cmd"};
 static bool has_executable_extension(const char* path) {
     const char* ext = strrchr(path, '.');
     if (!ext) return false;
-    
+
     for (size_t i = 0; i < sizeof(EXECUTABLE_EXTENSIONS)/sizeof(EXECUTABLE_EXTENSIONS[0]); i++) {
         if (_stricmp(ext, EXECUTABLE_EXTENSIONS[i]) == 0) {
             return true;
@@ -2766,7 +2769,7 @@ static bool has_executable_extension(const char* path) {
 // Find executable in PATH or current directory
 bool cye_find_executable(const char* name, Cye_DString* out_path) {
     if (!name || !out_path) return false;
-    
+
     // If name contains any path separator, check it directly
     const char* path_sep =
 #ifdef _WIN32
@@ -2774,7 +2777,7 @@ bool cye_find_executable(const char* name, Cye_DString* out_path) {
 #else
         strchr(name, '/');
 #endif
-    
+
     if (path_sep) {
         out_path->count = 0;
         cye_ds_write(out_path, name);
@@ -2786,15 +2789,15 @@ bool cye_find_executable(const char* name, Cye_DString* out_path) {
 #endif
         return cye_is_executable(out_path->items);
     }
-    
+
     // Get PATH environment variable
     const char* path_env = getenv("PATH");
     // printf("$PATH=%s\n", path_env);
     if (!path_env) return false;
-    
+
     Cye_DString path_copy = {0};
     cye_ds_write(&path_copy, path_env);
-    
+
     // Try each directory in PATH
     char* dir = strtok(path_copy.items, ENV_SEPARATOR);
     while (dir) {
@@ -2806,7 +2809,7 @@ bool cye_find_executable(const char* name, Cye_DString* out_path) {
 
         cye_ds_write(out_path, name);
         cye_ds_write_zero(out_path);
-        
+
 #ifdef _WIN32
         // On Windows, try with and without .exe if no extension provided
         if (!has_executable_extension(name)) {
@@ -2823,10 +2826,10 @@ bool cye_find_executable(const char* name, Cye_DString* out_path) {
             cye_ds_free(path_copy);
             return true;
         }
-        
+
         dir = strtok(NULL, ENV_SEPARATOR);
     }
-    
+
     cye_ds_free(path_copy);
     return false;
 }
@@ -2879,7 +2882,7 @@ bool cye_is_period_dir(ZString path) {
             cye_result_defer(false);
         }
     }
-    
+
 defer:
     return result;
 }
@@ -3141,7 +3144,7 @@ ZString cye_path_dir_of(ZString file_path) {
 
 // Get only extension
 ZString cye_path_ext(ZString path) {
-    const char *file_ext = strrchr(path, '.');
+    ZString file_ext = strrchr(path, '.');
     // May be null;
     return file_ext;
 }
@@ -3301,7 +3304,7 @@ bool cye_remove_file(ZString path) {
 
 
 // Helper function to join paths
-static void path_join(char *dest, const char *dir, const char *file) {
+static void path_join(char *dest, ZString dir, ZString file) {
     usz dir_len = strlen(dir);
     strcpy(dest, dir);
 
@@ -3319,7 +3322,7 @@ static void path_join(char *dest, const char *dir, const char *file) {
 }
 
 // Remove directory recursively
-bool cye_remove_dir(const char *path) {
+bool cye_remove_dir(ZString path) {
     char full_path[PATH_MAX];
     bool success = true;
 
@@ -3484,7 +3487,7 @@ Cye_Path_DArray cye_list_dir(ZString path) {
 }
 
 
-internal bool cye_glob_filter(const char *path, void *user_data);
+internal bool cye_glob_filter(ZString path, void *user_data);
 internal int  cye_path_glob_recursive_dirent(char *pattern, char path[PATH_MAX + 1], Cye_Path_DArray *matches);
 internal bool cye_path_glob_recursive(char pattern[PATH_MAX + 1], char path[PATH_MAX + 1], Cye_Path_DArray *matches);
 
@@ -3532,11 +3535,12 @@ int cye_path_glob_recursive_dirent(char *pattern, char path[PATH_MAX + 1], Cye_P
     return 0;
 }
 
-internal bool cye_glob_filter(const char *path, void *user_data) {
+internal bool cye_glob_filter(ZString path, void *user_data) {
     cye_assert(path != NULL);
 
     Cye_Glob_Filter_Data data = *(Cye_Glob_Filter_Data*)user_data;
-    Cye_Path_DArray* matches = data.matches;
+
+    Cye_Path_DArray* matches   = data.matches;
     MutString pattern          = data.pattern;
     MutString pattern_next     = data.pattern_next;
 
@@ -3667,7 +3671,7 @@ Cye_Pipe cye_pipe_open(void) {
         .bInheritHandle = TRUE,
         .lpSecurityDescriptor = NULL
     };
-    
+
     HANDLE read_handle, write_handle;
     if (!CreatePipe(&read_handle, &write_handle, &sa, 0)) {
         return CYE_INVALID_PIPE;
@@ -3764,7 +3768,7 @@ void cye_pipe_close_handle(Cye_Pipe_Handle* pipe) {
 //  String Slice Implementation
 //------------------------------------------------------------------------------------
 
-Cye_String_Slice cye_str_slice_make(const char *str) {
+Cye_String_Slice cye_str_slice_make(ZString str) {
     return (Cye_String_Slice)cye_slice_make(str, strlen(str));
 }
 
@@ -3805,7 +3809,7 @@ Cye_String_Slice cye_str_slice_strip_right(Cye_String_Slice s) {
     return s;
 }
 // Create string slice from string and explicit length
-Cye_String_Slice cye_str_slice_make_len(const char *str, usz len) {
+Cye_String_Slice cye_str_slice_make_len(ZString str, usz len) {
     return (Cye_String_Slice)cye_slice_make((char*)str, len);
 }
 
@@ -3861,6 +3865,11 @@ Cye_String_Slice_DArray cye_str_slice_split(Cye_String_Slice s, Cye_String_Slice
     }
 
     return result;
+}
+
+Cye_String_Slice_DArray cye_str_slice_split_zstr(Cye_String_Slice s, ZString delim) {
+    Cye_String_Slice ss_delim = cye_str_slice_make(delim);
+    return cye_str_slice_split(s, ss_delim);
 }
 
 // Split string slice at first occurrence of delimiter
@@ -3960,6 +3969,15 @@ bool cye_zstr_match_pattern(ZString pattern, ZString str) {
 }
 
 
+ZString cye_zstr_ordinal(int n) {
+    static ZString suffixes[]  = { "th", "st", "nd", "rd", "th"};
+    if (11 <= (n % 100) && (n % 100) <= 13) {
+        return "th";
+    }
+    return suffixes[cye_min(n % 10, 4)];
+}
+
+
 
 // NOTE: Based on this steal
 // https://github.com/cacharle/globule/blob/d9ac95c55750dcb07dc41e87d4bc760a1ac3032e/src/fnmatch.c#L6C3-L6C4
@@ -4013,7 +4031,7 @@ bool cye_pattern_match(ZString pattern, ZString text, int flags) {
         if (complement) {
             pattern++;
         }
-        const char *closing = strchr(pattern + 1, ']') + 1;
+        ZString closing = strchr(pattern + 1, ']') + 1;
         if (*pattern == *text) { // has to contain at least one character
             return !complement ? cye_pattern_match(closing, text + 1, flags) : false;
         }
@@ -4296,7 +4314,7 @@ void cye_set_trace_level(Cye_Log_Level level) {
 }
 
 // TODO: Add colors from nabs.h
-void cye_trace_log(Cye_Log_Level level, const char *fmt, ...) {
+void cye_trace_log(Cye_Log_Level level, ZString fmt, ...) {
     // Level below current threshold, don't log anythin
     if (level < cye_threshold_log_level) return;
 
@@ -4304,9 +4322,9 @@ void cye_trace_log(Cye_Log_Level level, const char *fmt, ...) {
     va_start(args, fmt);
     char buffer[CYE_MAX_TRACE_LOG_MSG_LENGTH] = { 0 };
 
-    const char *color = "";
-    const char *reset = "";
-    const char *bold = "";
+    ZString color = "";
+    ZString reset = "";
+    ZString bold = "";
 
 
     switch (level) {
@@ -4396,7 +4414,7 @@ TString cye_ds_tstring(Cye_DString ds) {
     return cye_tprintf(cye_ds_fmt, cye_ds_fmt_arg(ds));
 }
 
-const char *cye_cpu_architecture() {
+ZString cye_cpu_architecture() {
 #if defined(__x86_64__) || defined(_M_X64)
   return "x86_64";
 #elif defined(i386) || defined(__i386__) || defined(__i386) || defined(_M_IX86)
@@ -4770,6 +4788,7 @@ char *nob_win32_error_message(DWORD err) {
 #define str_slice_equals_zstr      cye_str_slice_equals_zstr
 #define str_slice_contains         cye_str_slice_contains
 #define str_slice_split            cye_str_slice_split
+#define str_slice_split_zstr       cye_str_slice_split_zstr
 #define str_slice_split_first      cye_str_slice_split_first
 #define str_slice_starts_with      cye_str_slice_starts_with
 #define str_slice_ends_with        cye_str_slice_ends_with
@@ -4785,6 +4804,7 @@ char *nob_win32_error_message(DWORD err) {
 #define zstr_ends_with     cye_zstr_ends_with
 #define zstr_starts_with   cye_zstr_starts_with
 #define zstr_match_pattern cye_zstr_match_pattern
+#define zstr_ordinal       cye_zstr_ordinal
 
 #define pattern_match          cye_pattern_match
 #define is_pattern_well_formed cye_is_pattern_well_formed

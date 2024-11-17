@@ -1,5 +1,6 @@
 #define CYE_IMPLEMENTATION
 #define CYE_TEMP_CAPACITY kilobytes(4)
+#define CYE_DARRAY_INIT_CAP 256
 #include "cye.h"
 #include "shared.h"
 
