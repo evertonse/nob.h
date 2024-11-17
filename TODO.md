@@ -2,6 +2,10 @@
 - [x] Make Pipe example standard from the library
         cmd_run_sync_capture_output_and_reset()
 
-- [ ] Path: test expand vars
-- [ ] Path: Glob
-- [ ] String: fnmatch
+- [x] Path: test expand vars
+- [x] Path: Glob
+- [x] String: fnmatch
+- [ ] Windows: Make it work every test on windows
+- [ ] Make it work with C++
+- [ ] Make cye_malloc count allocations and deallocations
+- [ ] Glob: make `**` ignore `/` boundaries, possibly `.` too

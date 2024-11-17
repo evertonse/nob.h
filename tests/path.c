@@ -4,7 +4,35 @@
 
 void test_path_others(void) {
     assert_true(0 == strcmp(path_base_name("/home/64gb/senha.txt"), "senha.txt"));
-    assert_true(0 == strcmp(path_stem("logs/date.log.txt"), "date.log"));
+
+    assert_false(0 == strcmp(path_stem("logs/date.log.txt"), "date.log"));
+    assert_true(0 == strcmp(path_stem("logs/date.log.txt"), "logs/date.log"));
+
+    assert_true(0 == strcmp(path_ext("logs/date.log.txt"), ".txt"));
+
+    assert_true(is_period_dir("/..////"));
+
+    assert_true(is_period_dir("../"));
+    assert_true(is_period_dir("/../"));
+    assert_true(is_period_dir("/dasdsa/../"));
+
+    assert_false(is_period_dir("..a"));
+    assert_false(is_period_dir("/dasda.."));
+    assert_true(is_period_dir("../"));
+
+    assert_false(is_period_dir(""));
+    assert_false(is_period_dir(NULL));
+
+    assert_true(is_period_dir("."));
+    assert_true(is_period_dir("./"));
+    assert_true(is_period_dir("././././"));
+    assert_true(is_period_dir("././sadsad/./"));
+    assert_true(is_period_dir("/./"));
+    assert_true(is_period_dir("/dasdsa/./"));
+
+    assert_false(is_period_dir(".a"));
+    assert_false(is_period_dir("/dasda."));
+    assert_true(is_period_dir("./"));
 }
 
 void test_path_dir_of(void) {
@@ -180,10 +208,10 @@ void test_normalized(void) {
 }
 
 int main(void) {
+    test_path_others();
     test_path_dir_of();
     test_path_absolute();
     test_expand_user();
-    test_path_others();
     test_normalized();
     test_path_create();
     return 0;

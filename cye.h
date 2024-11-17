@@ -50,6 +50,7 @@
 #    define utimbuf _utimbuf
 #    define utime _utime
 #    define PATH_SEPARATOR "\\"
+#    define END_OF_LINE "\r\n"
 #    define PATH_SEPARATOR_CHAR '\\'
 #    define PATH_MAX MAX_PATH
 #else
@@ -62,6 +63,7 @@
 #    include <pwd.h>
 #    include <utime.h>
 #    include <errno.h>
+#    define END_OF_LINE "\n"
 #    define PATH_SEPARATOR "/"
 #    define PATH_SEPARATOR_CHAR '/'
 #endif
@@ -109,8 +111,10 @@
 #   define terabytes(x) (gigabytes(x) * (i64)(1024))
 #endif
 
-#define local static
+#define internal   static
+#define local      static
 #define file_scope static
+#define fallthrough /* nothing */
 
 #if defined(__GNUC__) || defined(__GNUG__)
 #   define force_inline   inline __attribute__((always_inline))
@@ -154,7 +158,7 @@
 #   define static_assert3(cond, msg) \
         typedef char static_assertion_##msg[(!!(cond))*2-1]; \
         static static_assertion_##msg static_assertion_use_##msg; \
-        unused(static_assertion_use_##msg);
+        // unused(static_assertion_use_##msg);
 
 #   define static_assert2(cond, line) static_assert3(cond, static_assertion_at_line_##line)
 #   define static_assert1(cond, line) static_assert2(cond, line)
@@ -280,15 +284,6 @@
 //----------------------------------------------------------------------------------
 //  Tweakable Constants
 //----------------------------------------------------------------------------------
-
-#ifdef _WIN32
-#    define CYE_END_OF_LINE "\r\n"
-#    define CYE_PATH_SEPARATOR "\\"
-#else
-#    define CYE_END_OF_LINE "\n"
-#    define CYE_PATH_SEPARATOR "/"
-#endif
-
 #ifndef cye_malloc
 #   define cye_malloc  malloc
 #endif
@@ -394,8 +389,8 @@ typedef i32 b32;
 #define RUNE_EOF     as(Rune)(-1)
 
 
-typedef const char* ZString; // Static Zero Terminated String
-typedef       char* TString; // Temporary String
+typedef const char* ZString;   // Static Zero Terminated String
+typedef       char* TString;   // Temporary String
 typedef       char* MutString; // Mutable String, might be temporary or not
 
 //----------------------------------------------------------------------------------
@@ -423,7 +418,10 @@ struct {                 \
 }
 
 typedef struct {
-    const char **items;
+    union {
+        const char **items;
+        const char **paths;
+    };
     usz count;
     usz capacity;
 } Cye_Path_DArray;
@@ -507,6 +505,14 @@ typedef struct {
     void   (*free)(void* ptr);
     rawptr any;
 } Cye_Context;
+
+typedef struct {
+    MutString pattern;
+    MutString pattern_next;
+    Cye_Path_DArray* matches;
+} Cye_Glob_Filter_Data;
+
+
 
 
 
@@ -644,7 +650,7 @@ bool cye_file_write_all(const char *path, const void *data, usz size);
 bool cye_file_read_all(const char *path, Cye_DString *ds);
 
 // Get File Type
-Cye_File_Kind cye_path_file_type(const char *path);
+Cye_File_Kind cye_path_file_kind(const char *path);
 
 // Normalize Path ex: ///oi/hello/././.txt -> /oi/hello/.txt
 char* cye_path_temp_normalize(ZString path);
@@ -691,6 +697,7 @@ bool cye_is_absolute(ZString path);                               // Check if pa
 bool cye_is_relative(ZString path);                               // Check if path  is relative
 bool cye_is_file(ZString path);                                   // Check if path  is regular  file
 bool cye_is_dir(ZString path);                                    // Check if path  is directory
+bool cye_is_period_dir(ZString path);                             // Check if path is the directory `./` of `..`
 bool cye_is_link(ZString path);                                   // Check if path  is symbolic link
 bool cye_is_mount(ZString path);                                  // Check if path  is mount    point
 bool cye_is_same_path(ZString path1, ZString path2);              // Check if paths reference same file (one can be absolute and another relative or on be a hard link)
@@ -724,8 +731,12 @@ bool cye_path_move(ZString src, ZString dst);                     // Move file o
 bool cye_path_rename(ZString src, ZString dst);                   // Rename file or directory
 bool cye_path_renames(ZString old_path, ZString new_path);        // Recursive directory or file renaming
 bool cye_path_replace(ZString src, ZString dst);                  // Rename file or directory, replacing if exists
-                                                                  // Paths valid for one func call much like TextFormat from Raylib
+
 Cye_Path_DArray cye_path_scandir(ZString path);                   // Iterator of directory entries
+Cye_Path_DArray cye_list_dir(ZString path);                       // Similar to LS or read_dir, but is return the darray
+
+bool cye_path_glob(ZString pattern, Cye_Path_DArray *matches);     // Glob a path shell style * ? [] and [!]
+Cye_Path_DArray cye_path_tglob(ZString pattern);               // Sames as Glob but Temporary Allocated strings
 
 // bool cye_path_walk                                              // Generate directory tree
 
@@ -811,8 +822,8 @@ Cye_Path_DArray cye_path_scandir(ZString path);                   // Iterator of
         (da)->count += (new_items_count);                                                       \
     } while (0)
 
-#define cye_da_fmt         "{.count=%zu, .capacity=%zu}"
-#define cye_da_fmt_arg(da) (da).count,   (da).capacity
+#define cye_da_fmt         "{.items=%p, .count=%zu, .capacity=%zu}"
+#define cye_da_fmt_arg(da) (da).items, (da).count, (da).capacity
 
 //------------------------------------------------------------------------------------
 //  Slices Declarations
@@ -946,7 +957,7 @@ bool cye_zstr_match_pattern(ZString pattern, ZString str);
 
 bool cye_pattern_match(ZString pattern, ZString string, int flags);
 bool cye_is_pattern_well_formed(ZString pattern);
-Cye_Match_Result cye_glob_match(const char *pattern, const char *text);
+Cye_Match_Result cye_glob_match(ZString pattern, ZString text);
 
 
 // TODO: Add String Slices Functions as we need
@@ -1037,6 +1048,7 @@ void cye_trace_log(Cye_Log_Level level, const char *fmt, ...);
 #define cye_trace_error(...) cye_trace_log(CYE_TRACE_ERROR,   __VA_ARGS__)
 #define cye_trace_warn(...)  cye_trace_log(CYE_LOG_WARNING, __VA_ARGS__)
 #define cye_trace_fatal(...) cye_trace_log(CYE_LOG_FATAL,   __VA_ARGS__)
+#define cye_trace_debug(fmt, ...) cye_trace_log(CYE_LOG_DEBUG, "`%s`: "fmt, __FUNCTION__, __VA_ARGS__)
 
 #define cye_return_defer(code) do { code; goto defer; } while(0)
 #define cye_result_defer(value) do { result = (value); goto defer; } while(0)
@@ -1642,7 +1654,7 @@ u0 cye_set_default_context(Cye_Context ctx) {
 TString cye_tstrdup(const char *cstr) {
     usz n = strlen(cstr);
     TString result = (TString)cye_talloc(n + 1);
-    cye_assert(result != NULL && "Please increase CYE_TEMP_CAPACITY");
+    cye_assert_msg(result != NULL, "Please increase CYE_TEMP_CAPACITY (%zu bytes)", CYE_TEMP_CAPACITY);
     memcpy(result, cstr, n);
     result[n] = '\0';
     return result;
@@ -1852,7 +1864,7 @@ bool cye_copy_dir(const char *src_path, const char *dst_path) {
     Cye_DString dst_ds = {0};
     usz temp_checkpoint = cye_temp_save();
 
-    Cye_File_Kind type = cye_path_file_type(src_path);
+    Cye_File_Kind type = cye_path_file_kind(src_path);
     if (type < 0) {
         depth -= 1;
         return false;
@@ -1929,7 +1941,17 @@ bool cye_read_dir_filtered(
 ) {
     cye_assert(parent);
     bool result = true;
-    static char full_path[PATH_MAX]; // Reuse the same buffer (hence static)
+
+    //
+    // We Might blow the the stack with this (`char[PATH_MAX+1]`)
+    // In case of recursive calls like glob functions
+    // but sure, we can linearize those, although it'd be slower
+    // because of two loops instead of one,
+    // one to get the `read_dir_filtered` then another to see if any files inside
+    // children are directories to finally call `read_dir_filtered` on those again
+    //
+    char full_path[PATH_MAX+1];
+
 #ifndef _WIN32 // On Unix
     DIR *dir = NULL;
 
@@ -1944,16 +1966,19 @@ bool cye_read_dir_filtered(
     while (ent != NULL) {
         const char *path = ent->d_name;
         if (use_parent) {
-            const char *fmt = (parent[strlen(parent) - 1] != PATH_SEPARATOR_CHAR) ? "%s" PATH_SEPARATOR "%s" : "%s%s";
-            snprintf(full_path, sizeof(full_path), fmt, parent, path);
+            strcpy(full_path, parent);
+            if(!cye_zstr_ends_with(full_path, PATH_SEPARATOR)) {
+                strcat(full_path, PATH_SEPARATOR);
+            }
+            strcat(full_path, path);
             path = full_path;
         }
-
         // Apply only filter if provided, otherwise just append anyways
         if (filter == NULL || filter(path, user_data)) {
             cye_da_append(children, cye_tstrdup(path));
         }
 
+        *full_path = 0;
         ent = readdir(dir);
     }
 
@@ -1990,8 +2015,11 @@ defer:
     do {
         const char *path = find_data.cFileName;
         if (use_parent) {
-            const char *fmt = (parent[strlen(parent) - 1] != PATH_SEPARATOR_CHAR) ? "%s" PATH_SEPARATOR "%s" : "%s%s";
-            snprintf(full_path, sizeof(full_path), fmt, parent, path);
+            strcpy(full_path, parent);
+            if(!cye_zstr_ends_with(full_path, PATH_SEPARATOR)) {
+                strcat(full_path, PATH_SEPARATOR);
+            }
+            strcat(full_path, path);
             path = full_path;
         }
 
@@ -2162,7 +2190,7 @@ close:
     return result;
 }
 
-Cye_File_Kind cye_path_file_type(const char *path) {
+Cye_File_Kind cye_path_file_kind(const char *path) {
 #ifndef _WIN32
     struct stat statbuf;
     if (stat(path, &statbuf) < 0) {
@@ -2588,6 +2616,59 @@ bool cye_is_dir(ZString path) {
     cye_todo("VAI TRABALHAR VAGABUNDO");
 }
 
+// Check if path is the directory `./` of `..`
+bool cye_is_period_dir(ZString path) {
+    if (path == NULL) {
+        return false;
+    }
+    bool result = false;
+    ZString path_suffix = strrchr(path,  PATH_SEPARATOR_CHAR);
+
+    if (path_suffix == NULL) {
+        path_suffix = path;
+    } else {
+        path_suffix += 1;
+        if (*path_suffix == '\0')  {
+            path_suffix -= 1;
+            while (path != path_suffix && *path_suffix == PATH_SEPARATOR_CHAR) {
+                path_suffix -= 1;
+            }
+            while (path != path_suffix && *path_suffix != PATH_SEPARATOR_CHAR) {
+                path_suffix -= 1;
+            }
+
+            if (*path_suffix != '\0' && *path_suffix == PATH_SEPARATOR_CHAR)  {
+                path_suffix += 1;
+            }
+        }
+    }
+
+    if (path_suffix[0] == '\0') {
+        cye_result_defer(false);
+    }
+
+    if (path_suffix[0] ==  '.' ) {
+        if (path_suffix[1] == '\0') {
+            cye_result_defer(true);
+        } else if (path_suffix[1] ==  PATH_SEPARATOR_CHAR) {
+            cye_result_defer(true);
+        } else if (path_suffix[1] ==  '.') {
+            if (path_suffix[2] == '\0') {
+                cye_result_defer(true);
+            } else if (path_suffix[2] ==  PATH_SEPARATOR_CHAR) {
+                cye_result_defer(true);
+            } else {
+                cye_result_defer(false);
+            }
+        } else {
+            cye_result_defer(false);
+        }
+    }
+    
+defer:
+    return result;
+}
+
 // Check if path  is symbolic link
 bool cye_is_link(ZString path) {
     cye_todo("VAI TRABALHAR VAGABUNDO");
@@ -2773,7 +2854,7 @@ ZString cye_path_dir_of(ZString file_path) {
     // If it's already a directory, return thyself
     Cye_Log_Level old_level = cye_threshold_log_level;
     cye_set_trace_level(CYE_LOG_NONE);
-    if (cye_path_file_type(file_path) == CYE_FILE_KIND_DIRECTORY) {
+    if (cye_path_file_kind(file_path) == CYE_FILE_KIND_DIRECTORY) {
         return file_path;
     }
     cye_set_trace_level(old_level);
@@ -2974,7 +3055,7 @@ bool cye_remove_file(ZString path) {
         return true;
     }
 
-    Cye_File_Kind type = cye_path_file_type(path);
+    Cye_File_Kind type = cye_path_file_kind(path);
 
     if (type != CYE_FILE_KIND_REGULAR) {
         cye_trace_error("`%s` exists but is not a regular file", path);
@@ -3182,6 +3263,157 @@ bool cye_path_replace(ZString src, ZString dst) {
 Cye_Path_DArray cye_path_scandir(ZString path) {
     cye_todo("New Functions to Work on");
 }
+
+Cye_Path_DArray cye_list_dir(ZString path) {
+    cye_todo("New Functions to Work on");
+}
+
+
+internal bool cye_glob_filter(const char *path, void *user_data);
+internal int  cye_path_glob_recursive_dirent_recursive(char *pattern, char path[PATH_MAX + 1], Cye_Path_DArray *matches);
+internal bool cye_path_glob_recursive(char pattern[PATH_MAX + 1], char path[PATH_MAX + 1], Cye_Path_DArray *matches);
+
+internal bool cye_glob_filter(const char *path, void *user_data) {
+    cye_assert(path != NULL);
+
+    Cye_Glob_Filter_Data data = *(Cye_Glob_Filter_Data*)user_data;
+    Cye_Path_DArray* matches = data.matches;
+    MutString pattern          = data.pattern;
+    MutString pattern_next     = data.pattern_next;
+
+    bool is_last_pattern = pattern_next == NULL;
+
+    ZString path_suffix = strrchr(path,  PATH_SEPARATOR_CHAR);
+    if (path_suffix == NULL) {
+        path_suffix = path;
+    } else {
+        path_suffix += 1;
+    }
+
+    if (!cye_pattern_match(pattern, path_suffix, 0)) {
+        return false;
+    }
+
+    // That includes directories
+    if (is_last_pattern) {
+        return true;
+    }
+
+    if (CYE_FILE_KIND_DIRECTORY == cye_path_file_kind(path)
+        && !cye_is_period_dir(path))
+    {
+        // Must be sure `path` is mutable
+        cye_path_glob_recursive(pattern_next, (MutString) path, matches);
+    }
+    return false;
+}
+
+
+int cye_path_glob_recursive_dirent_recursive(char *pattern, char path[PATH_MAX + 1], Cye_Path_DArray *matches) {
+#ifndef _WIN32
+    // Find the first ocurrence of the path separator
+    char *pattern_sep = strchr(pattern, PATH_SEPARATOR_CHAR);
+    bool is_last_pattern = pattern_sep == NULL;
+    char *pattern_next = NULL;
+    if (pattern_sep != NULL) {
+        *pattern_sep = '\0';
+        pattern_next = pattern_sep + 1;
+    }
+
+
+    DIR *dir = opendir(path);
+    struct dirent *dirent = NULL;
+    while ((dirent = readdir(dir)) != NULL) {
+        if (cye_pattern_match(pattern, dirent->d_name, 0)) {
+            if (is_last_pattern) {
+                char *match_path =
+                    // +2 for the \0 and the slash
+                cye_context.alloc(sizeof(char) * (strlen(path) + strlen(dirent->d_name) + 2));
+                strcpy(match_path, path);
+                strcat(match_path, PATH_SEPARATOR);
+                strcat(match_path, dirent->d_name);
+                cye_da_append(matches, match_path);
+            } else if (dirent->d_type == DT_DIR
+                && strcmp(dirent->d_name, ".") != 0
+                && strcmp(dirent->d_name, "..") != 0
+            ) {
+                char *path_end = strchr(path, '\0');
+                strcat(path, PATH_SEPARATOR);
+                strcat(path, dirent->d_name);
+                cye_path_glob_recursive_dirent_recursive(pattern_next, path, matches);
+                *path_end = '\0';
+            }
+        }
+    }
+#else
+    cye_trace_warn("Windows must use `cye_path_glob_recursive` instead");
+#endif
+    return 0;
+}
+
+bool cye_path_glob_recursive(char pattern[PATH_MAX + 1], char path[PATH_MAX + 1], Cye_Path_DArray *matches) {
+    // Find the first ocurrence of the path separator
+    char *pattern_sep = strchr(pattern, PATH_SEPARATOR_CHAR);
+    char *pattern_next = NULL;
+    if (pattern_sep != NULL) {
+        *pattern_sep = '\0';
+        pattern_next = pattern_sep + 1;
+    }
+
+    Cye_Glob_Filter_Data data = {
+        .pattern         = pattern,
+        .pattern_next    = pattern_next,
+        .matches         = matches
+    };
+
+    cye_set_trace_level(CYE_LOG_DEBUG);
+    bool result = cye_read_dir_filtered(
+        path, (Cye_Path_DArray*)matches,
+        true, cye_glob_filter, &data
+    );
+    return result;
+}
+
+
+Cye_Path_DArray cye_path_tglob(ZString pattern) {
+    Cye_Path_DArray matches = {0};
+    if (!cye_is_pattern_well_formed(pattern)) {
+        return cliteral(Cye_Path_DArray){0};
+    }
+
+    Cye_Context old_ctx = cye_context;
+    cye_context = cye_temp_context();
+    {
+        cye_path_glob(pattern, &matches);
+    }
+    cye_context = old_ctx;
+
+    return matches;
+}
+
+bool cye_path_glob(ZString pattern, Cye_Path_DArray *matches) {
+
+    if (!cye_is_pattern_well_formed(pattern)) {
+        return false;
+    }
+    char path[PATH_MAX + 1] = {'\0'};
+    bool absolute_path = pattern[0] == PATH_SEPARATOR_CHAR;
+    if (absolute_path) {
+        strcpy(path, PATH_SEPARATOR);
+    } else {
+        // Maybe @leaks
+        getcwd(path, PATH_MAX);
+    }
+
+    static char mut_pattern[PATH_MAX+1];
+    strcpy(mut_pattern, pattern);
+    cye_path_glob_recursive(mut_pattern, path, matches);
+
+    // NOTE: Not sure which is better or faster, using the filtered thing or raw dirent
+    unused(cye_path_glob_recursive_dirent_recursive);
+    return true;
+}
+
 
 
 //------------------------------------------------------------------------------------
@@ -3501,7 +3733,7 @@ bool cye_is_pattern_well_formed(ZString pattern) {
 
 // Make the glob match accpet pattern?
 // Advantages is that is less recursive than pattern_match
-Cye_Match_Result cye_glob_match(const char *pattern, const char *text) {
+Cye_Match_Result cye_glob_match(ZString pattern, ZString text) {
     cye_trace_warn("`%s` untested, this one does't consider period `.` and slash `/` special.", __FUNCTION__);
     while (*pattern != '\0' && *text != '\0') {
         switch (*pattern) {
@@ -4047,7 +4279,7 @@ char *nob_win32_error_message(DWORD err) {
 #define file_write_all                  cye_file_write_all
 #define file_write_all_zstr             cye_file_write_all_zstr
 #define file_read_all                   cye_file_read_all
-#define path_file_type                  cye_path_file_type
+#define path_file_kind                  cye_path_file_kind
 #define path_temp_normalize             cye_path_temp_normalize
 #define path_create_from_array          cye_path_create_from_array
 
@@ -4071,6 +4303,7 @@ char *nob_win32_error_message(DWORD err) {
 #define is_relative                     cye_is_relative
 #define is_file                         cye_is_file
 #define is_dir                          cye_is_dir
+#define is_period_dir                   cye_is_period_dir
 #define is_link                         cye_is_link
 #define is_mount                        cye_is_mount
 #define is_same_path                    cye_is_same_path
@@ -4221,6 +4454,7 @@ char *nob_win32_error_message(DWORD err) {
 #define trace_error     cye_trace_error
 #define trace_warn      cye_trace_warn
 #define trace_fatal     cye_trace_fatal
+#define trace_debug     cye_trace_debug
 
 #define return_defer cye_return_defer
 #define result_defer cye_result_defer

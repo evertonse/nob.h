@@ -2,8 +2,14 @@
 #include "cye.h"
 #include "shared.h"
 
-// #define pattern_match(pattern, text, flags) cye_glob(pattern, text)
-// #define pattern_match cye_glob_match_with_flags
+// #define USE_LINUX_GLOB
+
+#if defined(USE_LINUX_GLOB)
+#   include "linux-glob.c"
+#   define pattern_match(pattern, text, flags) linux_glob_match(pattern, text)
+#else
+#   define pattern_match cye_pattern_match
+#endif
 
 #define go(pattern, zstr)                                                                                                                                                                                                                                                                                                                                                                                                          \
     match = zstr_match_pattern(pattern, zstr);                                                                                                                                                                                                                                                                                                                                                                                     \
@@ -63,23 +69,23 @@ void test_pattern_match() {
 
 
 void test_string_comparison(void) {
-    assert_true(pattern_match("",           "",          0));
-    assert_true(pattern_match("a",          "a",         0));
-    assert_true(pattern_match("abc",        "abc",       0));
-    assert_false(pattern_match("ab",        "abc",       0));
-    assert_false(pattern_match("a",         "",          0));
+    assert_true(pattern_match( "",     "",          0));
+    assert_true(pattern_match( "a",    "a",         0));
+    assert_true(pattern_match( "abc",  "abc",       0));
+    assert_false(pattern_match("ab",   "abc",       0));
+    assert_false(pattern_match("a",    "",          0));
 }
 
 void test_wildcard(void) {
-    assert_true(pattern_match("*",          "",          0));
-    assert_true(pattern_match("*",          "a",         0));
-    assert_true(pattern_match("*",          "abcdefgh",  0));
-    assert_true(pattern_match("a*",         "abcdefgh",  0));
-    assert_true(pattern_match("*h",         "abcdefgh",  0));
-    assert_true(pattern_match("a*h",        "abcdefgh",  0));
-    assert_false(pattern_match("a*z",       "abcdefgh",  0));
-    assert_true(pattern_match("a*b*c",      "aIIIbIIIc", 0));
-    assert_false(pattern_match("a*b*c",     "aIIIIIIc",  0));
+    assert_true(pattern_match("*",       "",          0));
+    assert_true(pattern_match("*",       "a",         0));
+    assert_true(pattern_match("*",       "abcdefgh",  0));
+    assert_true(pattern_match("a*",      "abcdefgh",  0));
+    assert_true(pattern_match("*h",      "abcdefgh",  0));
+    assert_true(pattern_match("a*h",     "abcdefgh",  0));
+    assert_false(pattern_match("a*z",    "abcdefgh",  0));
+    assert_true(pattern_match("a*b*c",   "aIIIbIIIc", 0));
+    assert_false(pattern_match("a*b*c",  "aIIIIIIc",  0));
 }
 
 void test_question_mark(void) {

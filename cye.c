@@ -4,6 +4,8 @@
 
 const char *test_names[] = {
     "matching",
+    "glob",
+    "path",
     "dynamic_array",
     "read_dirs",
     "sort",
@@ -11,7 +13,6 @@ const char *test_names[] = {
     "making_dirs",
     "format_generic_args",
     "file_stats",
-    "path",
     "cmd_redirect_pipe_win_and_linux",
     "cmd_redirect_pipe",
     "temporary_storage_realloc",

@@ -12,9 +12,7 @@
 #include <asm/unaligned.h>
 
 const char hex_asc[] = "0123456789abcdef";
-EXPORT_SYMBOL(hex_asc);
 const char hex_asc_upper[] = "0123456789ABCDEF";
-EXPORT_SYMBOL(hex_asc_upper);
 
 /**
  * hex_to_bin - convert a hex digit to its real value
@@ -224,9 +222,7 @@ overflow2:
 overflow1:
 	return ascii ? ascii_column + len : (groupsize * 2 + 1) * ngroups - 1;
 }
-EXPORT_SYMBOL(hex_dump_to_buffer);
-
-#ifdef CONFIG_PRINTK
+#ifdef CONFIG_printf
 /**
  * print_hex_dump - print a text hex dump to syslog for a binary blob of data
  * @level: kernel log level (e.g. KERN_DEBUG)
@@ -278,18 +274,17 @@ void print_hex_dump(const char *level, const char *prefix_str, int prefix_type,
 
 		switch (prefix_type) {
 		case DUMP_PREFIX_ADDRESS:
-			printk("%s%s%p: %s\n",
+			printf("%s%s%p: %s\n",
 			       level, prefix_str, ptr + i, linebuf);
 			break;
 		case DUMP_PREFIX_OFFSET:
-			printk("%s%s%.8x: %s\n", level, prefix_str, i, linebuf);
+			printf("%s%s%.8x: %s\n", level, prefix_str, i, linebuf);
 			break;
 		default:
-			printk("%s%s%s\n", level, prefix_str, linebuf);
+			printf("%s%s%s\n", level, prefix_str, linebuf);
 			break;
 		}
 	}
 }
-EXPORT_SYMBOL(print_hex_dump);
 
-#endif /* defined(CONFIG_PRINTK) */
+#endif /* defined(CONFIG_printf) */
