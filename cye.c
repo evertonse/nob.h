@@ -3,6 +3,7 @@
 #include "shared.h"
 
 const char *test_names[] = {
+    "find_executable",
     "cmd_redirect_pipe",
     "cmd_capture_win_and_linux",
     "glob",

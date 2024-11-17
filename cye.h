@@ -49,6 +49,8 @@
 #    define stat _stat
 #    define utimbuf _utimbuf
 #    define utime _utime
+#    define ENV_SEPARATOR ";"
+#    define ENV_SEPARATOR_CHAR ';'
 #    define PATH_SEPARATOR "\\"
 #    define END_OF_LINE "\r\n"
 #    define PATH_SEPARATOR_CHAR '\\'
@@ -63,6 +65,8 @@
 #    include <pwd.h>
 #    include <utime.h>
 #    include <errno.h>
+#    define ENV_SEPARATOR ":"
+#    define ENV_SEPARATOR_CHAR ':'
 #    define END_OF_LINE "\n"
 #    define PATH_SEPARATOR "/"
 #    define PATH_SEPARATOR_CHAR '/'
@@ -719,6 +723,8 @@ bool cye_is_absolute(ZString path);                               // Check if pa
 bool cye_is_relative(ZString path);                               // Check if path  is relative
 bool cye_is_file(ZString path);                                   // Check if path  is regular  file
 bool cye_is_dir(ZString path);                                    // Check if path  is directory
+bool cye_is_executable(ZString path);
+bool cye_find_executable(ZString name, Cye_DString* out_path);    // Given a name, it finds the executable path
 bool cye_is_period_dir(ZString path);                             // Check if path is the directory `./` of `..`
 bool cye_is_link(ZString path);                                   // Check if path  is symbolic link
 bool cye_is_mount(ZString path);                                  // Check if path  is mount    point
@@ -1035,6 +1041,8 @@ Cye_Match_Result cye_glob_match(ZString pattern, ZString text);
 
 // Free the memory allocated by the Dynamic String
 #define cye_ds_free(ds) cye_da_free(ds)
+
+#define cye_ds_clear(ds) (ds)->count = 0
 
 // Formated Print onto the Dynamic String
 void cye_ds_printf(Cye_DString *ds, ZString fmt, ...);
@@ -2713,6 +2721,114 @@ bool cye_is_file(ZString path) {
 // Check if path  is directory
 bool cye_is_dir(ZString path) {
     cye_todo("VAI TRABALHAR VAGABUNDO");
+}
+
+// TODO: Move this into the library
+// Check if a path exists and is executable
+bool cye_is_executable(ZString path) {
+#ifdef _WIN32
+    DWORD attr = GetFileAttributesA(path);
+    if (attr == INVALID_FILE_ATTRIBUTES) return false;
+    
+    // Check if it's a directory
+    if (attr & FILE_ATTRIBUTE_DIRECTORY) return false;
+    
+    return true;
+#else
+    struct stat st;
+    if (stat(path, &st) != 0) return false;
+    
+    // Check if it's a regular file and has execute permission
+    return S_ISREG(st.st_mode) && (st.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH));
+#endif
+}
+
+#ifdef _WIN32
+static const char* EXECUTABLE_EXTENSIONS[] = {".exe", ".com", ".bat", ".cmd"};
+#endif
+
+
+#ifdef _WIN32
+// Windows-specific: check if string ends with any executable extension
+static bool has_executable_extension(const char* path) {
+    const char* ext = strrchr(path, '.');
+    if (!ext) return false;
+    
+    for (size_t i = 0; i < sizeof(EXECUTABLE_EXTENSIONS)/sizeof(EXECUTABLE_EXTENSIONS[0]); i++) {
+        if (_stricmp(ext, EXECUTABLE_EXTENSIONS[i]) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+#endif
+
+// Find executable in PATH or current directory
+bool cye_find_executable(const char* name, Cye_DString* out_path) {
+    if (!name || !out_path) return false;
+    
+    // If name contains any path separator, check it directly
+    const char* path_sep =
+#ifdef _WIN32
+        strpbrk(name, "\\/");
+#else
+        strchr(name, '/');
+#endif
+    
+    if (path_sep) {
+        out_path->count = 0;
+        cye_ds_write(out_path, name);
+#ifdef _WIN32
+        // On Windows, if no extension provided, try adding .exe
+        if (!has_executable_extension(name)) {
+            cye_ds_write(out_path, ".exe");
+        }
+#endif
+        return cye_is_executable(out_path->items);
+    }
+    
+    // Get PATH environment variable
+    const char* path_env = getenv("PATH");
+    // printf("$PATH=%s\n", path_env);
+    if (!path_env) return false;
+    
+    Cye_DString path_copy = {0};
+    cye_ds_write(&path_copy, path_env);
+    
+    // Try each directory in PATH
+    char* dir = strtok(path_copy.items, ENV_SEPARATOR);
+    while (dir) {
+        cye_ds_clear(out_path);
+        cye_ds_write(out_path, dir);
+        if (out_path->count > 0 && out_path->items[out_path->count-1] != PATH_SEPARATOR_CHAR) {
+            cye_ds_write(out_path, PATH_SEPARATOR);
+        }
+
+        cye_ds_write(out_path, name);
+        cye_ds_write_zero(out_path);
+        
+#ifdef _WIN32
+        // On Windows, try with and without .exe if no extension provided
+        if (!has_executable_extension(name)) {
+            // Try without extension first
+            if (cye_is_executable(out_path->items)) {
+                ds_free(path_copy);
+                return true;
+            }
+            // Try with .exe
+            cye_ds_write(out_path, ".exe");
+        }
+#endif
+        if (cye_is_executable(out_path->items)) {
+            cye_ds_free(path_copy);
+            return true;
+        }
+        
+        dir = strtok(NULL, ENV_SEPARATOR);
+    }
+    
+    cye_ds_free(path_copy);
+    return false;
 }
 
 // Check if path is the directory `./` of `..`
@@ -4546,6 +4662,8 @@ char *nob_win32_error_message(DWORD err) {
 #define is_relative                     cye_is_relative
 #define is_file                         cye_is_file
 #define is_dir                          cye_is_dir
+#define is_executable                   cye_is_executable
+#define find_executable                 cye_find_executable
 #define is_period_dir                   cye_is_period_dir
 #define is_link                         cye_is_link
 #define is_mount                        cye_is_mount
@@ -4684,7 +4802,9 @@ char *nob_win32_error_message(DWORD err) {
 #define ds_write      cye_ds_write
 #define ds_write_char cye_ds_write_char
 
+
 // Free the memory allocated by a string builder
+#define ds_clear  cye_ds_clear
 #define ds_free   cye_ds_free
 #define ds_printf cye_ds_printf
 
