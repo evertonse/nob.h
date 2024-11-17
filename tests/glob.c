@@ -70,7 +70,6 @@ int main(void) {
         temp_rewind(chk_point);
     }
 
-    exit(1);
     return 0;
 }
 

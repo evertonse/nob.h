@@ -155,8 +155,8 @@
 // Create a maybe valid type
 // Then, use the type by creating a variable, no unused typedef
 // Then, Use the variable, no unused variable
-#   define static_assert3(cond, msg) \
-        typedef char static_assertion_##msg[(!!(cond))*2-1]; \
+#   define static_assert3(cond, msg)                              \
+        typedef char static_assertion_##msg[(!!(cond))*2-1];      \
         static static_assertion_##msg static_assertion_use_##msg; \
         // unused(static_assertion_use_##msg);
 
@@ -451,7 +451,7 @@ typedef struct {
     time_t created_at;
     time_t accessed_at;
     time_t modified_at;
-    size_t size_bytes;
+    usz size_bytes;
 } Cye_File_Stats;
 
 
@@ -512,9 +512,30 @@ typedef struct {
     Cye_Path_DArray* matches;
 } Cye_Glob_Filter_Data;
 
+#ifndef _WIN32
+    typedef int Cye_Pipe_Handle;
+    #define CYE_INVALID_PIPE_HANDLE (-1)
+#else
+    typedef HANDLE Cye_Pipe_Handle;
+    #define CYE_INVALID_PIPE_HANDLE INVALID_HANDLE_VALUE
+#endif
+
+typedef struct {
+    Cye_Pipe_Handle read;
+    Cye_Pipe_Handle write;
+} Cye_Pipe;
+
+#ifndef _WIN32
+    #define CYE_INVALID_PIPE ((Cye_Pipe){-1, -1})
+#else
+    #define CYE_INVALID_PIPE ((Pipe){INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE})
+#endif
 
 
-
+typedef struct {
+    Cye_DString stdout;
+    Cye_DString stderr;
+} Cye_Capture_Result;
 
 
 /*..................................................................................
@@ -539,7 +560,7 @@ bool cye_process_wait(Cye_Process proc); // Wait until the process has finished
 //  Commands Declarations
 //------------------------------------------------------------------------------------
 #define cye_cmd_append(cmd, ...)              \
-    cye_da_append_buf(                       \
+    cye_da_append_buf(                        \
         cmd, ((const char *[]){__VA_ARGS__}), \
         (sizeof((const char *[]){__VA_ARGS__}) / sizeof(const char *)))
 
@@ -575,6 +596,7 @@ bool cye_cmd_run_sync_redirect(Cye_Command cmd, Cye_Command_Redirect redirect);
 
 // Run redirected command synchronously and set cmd.count to 0 and close all the opened files
 bool cye_cmd_run_sync_redirect_and_reset(Cye_Command *cmd, Cye_Command_Redirect redirect);
+bool cye_cmd_run_sync_capture_and_reset(Cye_Command* cmd, Cye_Capture_Result* result);
 
 #if !defined(cye_rebuild_command)
 #  ifdef _WIN32
@@ -637,7 +659,7 @@ bool cye_read_dir_filtered(
 #define cye_read_dir(parent, children) cye_read_dir_filtered(parent, children, false, NULL, NULL)
 
 // Append data to the end of file
-bool cye_file_append(const char* path, const void* data, size_t count);
+bool cye_file_append(const char* path, const void* data, usz count);
 
 // Append zero terminated string to the end of file
 bool cye_file_append_zstr(const char* path, const char* str);
@@ -741,11 +763,21 @@ Cye_Path_DArray cye_path_tglob(ZString pattern);               // Sames as Glob 
 // bool cye_path_walk                                              // Generate directory tree
 
 #define cye_file_stats_fmt "{.created_at=%s (%zu), .accessed_at=%s (%zu), .modified_at=%s (%zu), .size=%zu (bytes)}"
-#define cye_file_stats_fmt_arg(stats)                \
+#define cye_file_stats_fmt_arg(stats)                              \
     strtok(ctime(&(stats).created_at), "\n"),  (stats).created_at, \
     strtok(ctime(&(stats).accessed_at), "\n"), (stats).accessed_at,\
     strtok(ctime(&(stats).modified_at), "\n"), (stats).modified_at,\
     (stats).size_bytes
+
+//------------------------------------------------------------------------------------
+//  Pipe Declarations
+//------------------------------------------------------------------------------------
+Cye_Pipe cye_pipe_open(void);
+void cye_pipe_close(Cye_Pipe handle);
+bool cye_is_pipe_valid(Cye_Pipe handle);
+bool cye_pipe_read(Cye_Pipe_Handle pipe, char* buffer, usz buffer_size, usz* bytes_read);
+bool cye_pipe_write(Cye_Pipe_Handle pipe, const char* buffer, usz buffer_size, usz* bytes_written);
+void cye_pipe_close_handle(Cye_Pipe_Handle* pipe);
 
 //------------------------------------------------------------------------------------
 //  Dynamic Array Declarations
@@ -856,20 +888,21 @@ Cye_Path_DArray cye_path_tglob(ZString pattern);               // Sames as Glob 
     cye_slice_make((slice).data + ((slice).count - (n)), (n))
 
 // Compare two slices
-#define cye_slice_equal(a, b) \
+#define cye_slice_equal(a, b)    \
     (((a).count == (b).count) && \
      (memcmp((a).data, (b).data, (a).count * sizeof(*(a).data)) == 0))
 
 // Check if slice contains element
-#define cye_slice_contains(slice, elem) ({ \
-    bool found = false; \
+// @extensions, revise
+#define cye_slice_contains(slice, elem) ({   \
+    bool found = false;                      \
     for(usz i = 0; i < (slice).count; i++) { \
-        if ((slice).data[i] == (elem)) { \
-            found = true; \
-            break; \
-        } \
-    } \
-    found; \
+        if ((slice).data[i] == (elem)) {     \
+            found = true;                    \
+            break;                           \
+        }                                    \
+    }                                        \
+    found;                                   \
 })
 
 // Check if slice is empty
@@ -884,15 +917,16 @@ Cye_Path_DArray cye_path_tglob(ZString pattern);               // Sames as Glob 
     memcpy((dst).data, (src).data, (src).count * sizeof(*(src).data))
 
 // Find index of element
-#define cye_slice_index_of(slice, elem) ({ \
-    usz idx = (usz)-1; \
+// @extensions
+#define cye_slice_index_of(slice, elem) ({   \
+    usz idx = (usz)-1;                       \
     for(usz i = 0; i < (slice).count; i++) { \
-        if ((slice).data[i] == (elem)) { \
-            idx = i; \
-            break; \
-        } \
-    } \
-    idx; \
+        if ((slice).data[i] == (elem)) {     \
+            idx = i;                         \
+            break;                           \
+        }                                    \
+    }                                        \
+    idx;                                     \
 })
 #define cye_slice_fmt "{.data=%p, .count=%zu}"
 #define cye_slice_fmt_arg(slice)  slice.data, slice.count
@@ -977,7 +1011,7 @@ Cye_Match_Result cye_glob_match(ZString pattern, ZString text);
     do {                              \
         const char *s = (zstr);       \
         usz n = strlen(s);            \
-        cye_da_append_buf(ds, s, n); \
+        cye_da_append_buf(ds, s, n);  \
     } while (0)
 
 #define cye_ds_write(ds, ...)                                               \
@@ -989,7 +1023,7 @@ Cye_Match_Result cye_glob_match(ZString pattern, ZString text);
         {                                                                   \
             const char *s = cye_tmp_strs[idx];                              \
             usz n = strlen(s);                                              \
-            cye_da_append_buf(ds, s, n);                                   \
+            cye_da_append_buf(ds, s, n);                                    \
         }                                                                   \
     } while (0)
 
@@ -1065,11 +1099,11 @@ void cye_trace_log(Cye_Log_Level level, const char *fmt, ...);
 void cye__assert_handler(char const *prefix, char const *condition, char const *file, int line, char const *msg, ...);
 
 #ifndef cye_assert_msg
-#define cye_assert_msg(cond, msg, ...) \
-    ((void)((cond) || \
+#define cye_assert_msg(cond, msg, ...)                             \
+    ((void)((cond) ||                                              \
         (cye__assert_handler("Assertion Failure", #cond, __FILE__, \
-                          (int)__LINE__, msg, ##__VA_ARGS__), \
-         DEBUG_TRAP(), \
+                          (int)__LINE__, msg, ##__VA_ARGS__),      \
+         DEBUG_TRAP(),                                             \
          0)))
 #endif
 
@@ -1163,8 +1197,8 @@ TString cye_ds_tstring(Cye_DString ds);
 
 #define cye_sort_q(T, ptr, count, compare) do {                          \
     T *arr = (ptr);                                                      \
-    size_t count = (count);                                              \
-    for (size_t i = 1; i < count; i++) {                                 \
+    usz count = (count);                                                 \
+    for (usz i = 1; i < count; i++) {                                    \
         T key = arr[i];                                                  \
         sizet j = i;                                                     \
         while (j > 0) {                                                  \
@@ -1183,9 +1217,9 @@ TString cye_ds_tstring(Cye_DString ds);
 // Bubble sort macro - stable sort
 #define cye_bubble_sort(T, ptr, count, compare) do {                    \
     T* arr = (ptr);                                                     \
-    size_t n = (count);                                                 \
-    for (size_t i = 0; i < n - 1; i++) {                                \
-        for (size_t j = 0; j < n - i - 1; j++) {                        \
+    usz n = (count);                                                    \
+    for (usz i = 0; i < n - 1; i++) {                                   \
+        for (usz j = 0; j < n - i - 1; j++) {                           \
             T a = arr[j];                                               \
             T b = arr[j + 1];                                           \
             if (compare) {                                              \
@@ -1200,11 +1234,11 @@ TString cye_ds_tstring(Cye_DString ds);
 // Quicksort macro - unstable but efficient sort
 #define cye_quick_sort(T, ptr, count, compare) do {                     \
     T* arr = (ptr);                                                     \
-    size_t n = (count);                                                 \
+    usz n = (count);                                                    \
     if (n <= 1) break;                                                  \
                                                                         \
     /* Stack for tracking partition ranges */                           \
-    size_t stack[64][2];                                                \
+    usz stack[64][2];                                                   \
     int top = 0;                                                        \
                                                                         \
     /* Initialize stack with full range */                              \
@@ -1214,14 +1248,14 @@ TString cye_ds_tstring(Cye_DString ds);
                                                                         \
     while (top > 0) {                                                   \
         top--;                                                          \
-        size_t low = stack[top][0];                                     \
-        size_t high = stack[top][1];                                    \
+        usz low = stack[top][0];                                        \
+        usz high = stack[top][1];                                       \
                                                                         \
         /* Partition */                                                 \
         T pivot = arr[high];                                            \
-        size_t i = low;                                                 \
+        usz i = low;                                                    \
                                                                         \
-        for (size_t j = low; j < high; j++) {                           \
+        for (usz j = low; j < high; j++) {                              \
             T a = arr[j];                                               \
             T b = pivot;                                                \
             if (compare) {                                              \
@@ -1588,6 +1622,71 @@ bool cye_cmd_run_sync_redirect_and_reset(Cye_Command *cmd, Cye_Command_Redirect 
     return ok;
 }
 
+// Run a command synchronously and capture its stdout and stderr output
+// Returns true on success, false on failure
+bool cye_cmd_run_sync_capture_and_reset(Cye_Command* cmd, Cye_Capture_Result* result) {
+    bool success = false;
+    Cye_Pipe pipe_out = CYE_INVALID_PIPE;
+    Cye_Pipe pipe_err = CYE_INVALID_PIPE;
+    
+    // Create pipes for stdout and stderr
+    pipe_out = cye_pipe_open();
+    if (!cye_is_pipe_valid(pipe_out)) {
+        goto cleanup;
+    }
+    
+    pipe_err = cye_pipe_open();
+    if (!cye_is_pipe_valid(pipe_err)) {
+        goto cleanup;
+    }
+    
+    // Run the command with redirected output
+    Cye_Process p = cye_cmd_run_async_redirect_and_reset(
+        cmd,
+        (Cye_Command_Redirect){
+            .out = &pipe_out.write,
+            .err = &pipe_err.write
+        }
+    );
+    
+    if (p == CYE_INVALID_PROCESS) {
+        goto cleanup;
+    }
+    
+    // Close write ends after starting the process
+    cye_pipe_close_handle(&pipe_out.write);
+    cye_pipe_close_handle(&pipe_err.write);
+    
+    // Read from both pipes
+    char buffer[1024];
+    usz bytes_read;
+    
+    // Read from stderr
+    while (cye_pipe_read(pipe_err.read, buffer, sizeof(buffer) - 1, &bytes_read) && bytes_read > 0) {
+        cye_ds_write_buf(&result->stderr, buffer, bytes_read);
+    }
+    cye_ds_write_zero(&result->stderr);
+    
+    // Read from stdout
+    while (cye_pipe_read(pipe_out.read, buffer, sizeof(buffer) - 1, &bytes_read) && bytes_read > 0) {
+        cye_ds_write_buf(&result->stdout, buffer, bytes_read);
+    }
+    cye_ds_write_zero(&result->stdout);
+    
+    // Wait for process completion
+    success = cye_process_wait(p);
+    
+cleanup:
+    if (cye_is_pipe_valid(pipe_out)) {
+        cye_pipe_close(pipe_out);
+    }
+    if (cye_is_pipe_valid(pipe_err)) {
+        cye_pipe_close(pipe_err);
+    }
+    
+    return success;
+}
+
 
 // The implementation idea is stolen from https://github.com/zhiayang/nabs
 void cye__rebuild_ourselves(ZString source_path, int argc, ZString *argv) {
@@ -1795,7 +1894,7 @@ bool cye_copy_file(const char *src_path, const char *dst_path) {
 #ifndef _WIN32
     int src_fd = -1;
     int dst_fd = -1;
-    size_t buf_size = 32*1024;
+    usz buf_size = 32*1024;
     char *buf = cye_context.realloc(NULL, buf_size);
     cye_assert(buf != NULL && "RAM not enough");
     bool result = true;
@@ -2141,7 +2240,7 @@ bool cye_file_write_all(const char *path, const void *data, usz size) {
 
     const char *buf = data;
     while (size > 0) {
-        size_t n = fwrite(buf, 1, size, f);
+        usz n = fwrite(buf, 1, size, f);
         if (ferror(f)) {
             cye_trace_error("Could not write into file %s: %s\n", path, strerror(errno));
             cye_result_defer(false);
@@ -2382,7 +2481,7 @@ ZString cye_path_expand_user(ZString path) {
 #else
     // Find the end of the username or ~ if no username
     const char* path_separator = strchr(path, '/');
-    usz username_len = path_separator ? (size_t)(path_separator - path - 1) :
+    usz username_len = path_separator ? (usz)(path_separator - path - 1) :
                          (path_len > 1 ? path_len - 1 : 0);
 
     const char* home_dir = NULL;
@@ -2564,7 +2663,7 @@ bool cye_file_stats(const char* path, Cye_File_Stats* stats) {
     stats->created_at = st.st_ctime;
     stats->accessed_at = st.st_atime;
     stats->modified_at = st.st_mtime;
-    stats->size_bytes = (size_t)st.st_size;
+    stats->size_bytes = (usz)st.st_size;
 
     return true;
 #else
@@ -2590,7 +2689,7 @@ bool cye_file_stats(const char* path, Cye_File_Stats* stats) {
     stats->created_at = ((ULARGE_INTEGER*)&created)->QuadPart / 10000000ULL - 11644473600ULL;
     stats->accessed_at = ((ULARGE_INTEGER*)&accessed)->QuadPart / 10000000ULL - 11644473600ULL;
     stats->modified_at = ((ULARGE_INTEGER*)&modified)->QuadPart / 10000000ULL - 11644473600ULL;
-    stats->size_bytes = (size_t)size.QuadPart;
+    stats->size_bytes = (usz)size.QuadPart;
 
     return true;
 #endif
@@ -2905,7 +3004,7 @@ ZString cye_path_dir_of(ZString file_path) {
 
     // Create a static buffer for the result
     static char dir_buffer[CYE_PATH_MAX];
-    size_t len = last_sep - file_path;
+    usz len = last_sep - file_path;
 
     // Handle the case where the separator is the last character
     if (last_sep[1] == '\0') {
@@ -3087,7 +3186,7 @@ bool cye_remove_file(ZString path) {
 
 // Helper function to join paths
 static void path_join(char *dest, const char *dir, const char *file) {
-    size_t dir_len = strlen(dir);
+    usz dir_len = strlen(dir);
     strcpy(dest, dir);
 
     #ifdef _WIN32
@@ -3432,6 +3531,104 @@ bool cye_path_glob(ZString pattern, Cye_Path_DArray *matches) {
 }
 
 
+//------------------------------------------------------------------------------------
+//  Pipe Implementation
+//------------------------------------------------------------------------------------
+Cye_Pipe cye_pipe_open(void) {
+#ifndef _WIN32
+    int pipefd[2];
+    if (pipe(pipefd) == -1) {
+        return CYE_INVALID_PIPE;
+    }
+    return (Cye_Pipe){
+        .read = pipefd[0],
+        .write = pipefd[1]
+    };
+
+#else
+    SECURITY_ATTRIBUTES sa = {
+        .nLength = sizeof(SECURITY_ATTRIBUTES),
+        .bInheritHandle = TRUE,
+        .lpSecurityDescriptor = NULL
+    };
+    
+    HANDLE read_handle, write_handle;
+    if (!CreatePipe(&read_handle, &write_handle, &sa, 0)) {
+        return CYE_INVALID_PIPE;
+    }
+    return (Cye_Pipe){
+        .read = read_handle,
+        .write = write_handle
+    };
+#endif
+}
+
+void cye_pipe_close(Cye_Pipe handle) {
+#ifndef _WIN32
+    if (handle.read != CYE_INVALID_PIPE_HANDLE) close(handle.read);
+    if (handle.write != CYE_INVALID_PIPE_HANDLE) close(handle.write);
+#else
+    if (handle.read != CYE_INVALID_PIPE_HANDLE) CloseHandle(handle.read);
+    if (handle.write != CYE_INVALID_PIPE_HANDLE) CloseHandle(handle.write);
+#endif
+}
+
+bool cye_is_pipe_valid(Cye_Pipe handle) {
+    return handle.read != CYE_INVALID_PIPE_HANDLE &&
+           handle.write != CYE_INVALID_PIPE_HANDLE;
+}
+
+bool cye_pipe_read(Cye_Pipe_Handle pipe, char* buffer, usz buffer_size, usz * bytes_read) {
+#ifndef _WIN32
+    isz result = read(pipe, buffer, buffer_size);
+    if (result < 0) {
+        *bytes_read = 0;
+        return false;
+    }
+    *bytes_read = (usz)result;
+    return true;
+#else
+    DWORD bytes_read_win;
+    if (!ReadFile(pipe, buffer, (DWORD)buffer_size, &bytes_read_win, NULL)) {
+        *bytes_read = 0;
+        return false;
+    }
+    *bytes_read = bytes_read_win;
+    return true;
+#endif
+}
+
+bool cye_pipe_write(Cye_Pipe_Handle pipe, const char* buffer, usz buffer_size, usz* bytes_written) {
+#ifndef _WIN32
+    isz result = write(pipe, buffer, buffer_size);
+    if (result < 0) {
+        *bytes_written = 0;
+        return false;
+    }
+    *bytes_written = (usz)result;
+    return true;
+#else
+    DWORD bytes_written_win;
+    if (!WriteFile(pipe, buffer, (DWORD)buffer_size, &bytes_written_win, NULL)) {
+        *bytes_written = 0;
+        return false;
+    }
+    *bytes_written = bytes_written_win;
+    return true;
+#endif
+}
+
+
+
+void cye_pipe_close_handle(Cye_Pipe_Handle* pipe) {
+    if (*pipe == CYE_INVALID_PIPE_HANDLE) return;
+#ifndef _WIN32
+    close(*pipe);
+#else
+    CloseHandle(*pipe);
+#endif
+    *pipe = CYE_INVALID_PIPE_HANDLE;
+}
 
 //------------------------------------------------------------------------------------
 //  Dynamic Array Implementation
@@ -3909,7 +4106,7 @@ void cye_ds_printf(Cye_DString *ds, ZString fmt, ...) {
 }
 
 //----------------------------------------------------------------------------------
-//  Utils Math Implemenetation
+//  Utils Math Implementation
 //----------------------------------------------------------------------------------
 
 // Clamp float value
@@ -3975,7 +4172,7 @@ int cye_float_equals(f32 x, f32 y) {
 }
 
 //------------------------------------------------------------------------------------
-//  Utils Implemenetation
+//  Utils Implementation
 //------------------------------------------------------------------------------------
 
 void cye_set_trace_level(Cye_Log_Level level) {
@@ -4238,6 +4435,16 @@ char *nob_win32_error_message(DWORD err) {
 #define String_Slice_DArray Cye_String_Slice_DArray
 #define Context             Cye_Context
 
+#define Glob_Filter_Data    Cye_Glob_Filter_Data
+
+#define Pipe_Handle         Cye_Pipe_Handle
+#define INVALID_PIPE_HANDLE CYE_INVALID_PIPE_HANDLE
+#define Pipe                Cye_Pipe
+#define INVALID_PIPE        CYE_INVALID_PIPE
+#define Capture_Result      Cye_Capture_Result
+
+
+
 //------------------------------------------------------------------------------------
 //  Global Variables Short Names
 //------------------------------------------------------------------------------------
@@ -4278,6 +4485,8 @@ char *nob_win32_error_message(DWORD err) {
 #define cmd_run_sync_and_reset           cye_cmd_run_sync_and_reset
 #define cmd_run_sync_redirect            cye_cmd_run_sync_redirect
 #define cmd_run_sync_redirect_and_reset  cye_cmd_run_sync_redirect_and_reset
+#define cmd_run_sync_capture_and_reset   cye_cmd_run_sync_capture_and_reset
+
 
 
 //------------------------------------------------------------------------------------
@@ -4376,6 +4585,19 @@ char *nob_win32_error_message(DWORD err) {
 
 #define file_stats_fmt                     cye_file_stats_fmt
 #define file_stats_fmt_arg                 cye_file_stats_fmt_arg
+
+//------------------------------------------------------------------------------------
+//  Pipe Short Names
+//------------------------------------------------------------------------------------
+
+#define pipe_open         cye_pipe_open
+#define pipe_close        cye_pipe_close
+#define is_pipe_valid     cye_is_pipe_valid
+#define pipe_read         cye_pipe_read
+#define pipe_write        cye_pipe_write
+#define pipe_close_handle cye_pipe_close_handle
+
+
 
 //------------------------------------------------------------------------------------
 //  Dynamic Array Short Names

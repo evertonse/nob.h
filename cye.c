@@ -3,6 +3,8 @@
 #include "shared.h"
 
 const char *test_names[] = {
+    "cmd_redirect_pipe",
+    "cmd_capture_win_and_linux",
     "glob",
     "read_dirs",
     "matching",
@@ -13,8 +15,6 @@ const char *test_names[] = {
     "making_dirs",
     "format_generic_args",
     "file_stats",
-    "cmd_redirect_pipe_win_and_linux",
-    "cmd_redirect_pipe",
     "temporary_storage_realloc",
     "temporary_storage",
     "cmd_redirect",

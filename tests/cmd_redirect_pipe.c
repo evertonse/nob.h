@@ -2,38 +2,17 @@
 #include "cye.h"
 #include "shared.h"
 
-typedef struct {
-    int read_fd;
-    int write_fd;
-} Pipe_Handle;
 
-#define INVALID_PIPE_HANDLE ((Pipe_Handle){-1, -1})
 
-static Pipe_Handle pipe_open(void) {
-    int pipefd[2];
-    if (pipe(pipefd) == -1) {
-        return INVALID_PIPE_HANDLE;
-    }
-    return (Pipe_Handle){
-        .read_fd = pipefd[0],
-        .write_fd = pipefd[1]
-    };
-}
-
-static void pipe_close(Pipe_Handle handle) {
-    if (handle.read_fd != -1) close(handle.read_fd);
-    if (handle.write_fd != -1) close(handle.write_fd);
-}
-
-static bool pipe_valid(Pipe_Handle handle) {
-    return handle.read_fd != -1 && handle.write_fd != -1;
+static bool pipe_valid(Pipe handle) {
+    return handle.read != -1 && handle.write != -1;
 }
 
 int main(void) {
     int result = 0;
     Command cmd = {0};
-    Pipe_Handle pipe_out = INVALID_PIPE_HANDLE;
-    Pipe_Handle pipe_err = INVALID_PIPE_HANDLE;
+    Pipe pipe_out = INVALID_PIPE;
+    Pipe pipe_err = INVALID_PIPE;
     DString ds = {0};
 
     if (!build_tool(&cmd, "echo")) {
@@ -59,8 +38,8 @@ int main(void) {
     Process p = cmd_run_async_redirect_and_reset(
         &cmd,
         (Command_Redirect){
-            .out = &pipe_out.write_fd,
-            .err = &pipe_err.write_fd
+            .out = &pipe_out.write,
+            .err = &pipe_err.write
         }
     );
 
@@ -69,15 +48,15 @@ int main(void) {
     }
 
     // Close write ends after starting the process
-    close(pipe_out.write_fd);
-    pipe_out.write_fd = -1;
-    close(pipe_err.write_fd);
-    pipe_err.write_fd = -1;
+    close(pipe_out.write);
+    pipe_out.write = -1;
+    close(pipe_err.write);
+    pipe_err.write = -1;
 
     // Read from the stderr pipe
     char buffer[1024];
     ssize_t bytes_read;
-    while ((bytes_read = read(pipe_err.read_fd, buffer, sizeof(buffer) - 1)) > 0) {
+    while ((bytes_read = read(pipe_err.read, buffer, sizeof(buffer) - 1)) > 0) {
         buffer[bytes_read] = '\0';
         ds_write(&ds, buffer);
     }
@@ -88,7 +67,7 @@ int main(void) {
     }
 
     // Read from the stdout pipe
-    while ((bytes_read = read(pipe_out.read_fd, buffer, sizeof(buffer) - 1)) > 0) {
+    while ((bytes_read = read(pipe_out.read, buffer, sizeof(buffer) - 1)) > 0) {
         buffer[bytes_read] = '\0';
         ds_write(&ds, buffer);
     }
