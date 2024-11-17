@@ -4,22 +4,22 @@
 
 #ifdef _WIN32
 #include <windows.h>
-typedef HANDLE Pipe_Handle;
-#define INVALID_PIPE_HANDLE INVALID_HANDLE_VALUE
+typedef HANDLE Cye_Pipe_Handle;
+#define CYE_INVALID_PIPE_HANDLE INVALID_HANDLE_VALUE
 #else
-typedef int Pipe_Handle;
-#define INVALID_PIPE_HANDLE (-1)
+typedef int Cye_Pipe_Handle;
+#define CYE_INVALID_PIPE_HANDLE (-1)
 #endif
 
 typedef struct {
-    Pipe_Handle read;
-    Pipe_Handle write;
+    Cye_Pipe_Handle read;
+    Cye_Pipe_Handle write;
 } Pipe;
 
 #ifdef _WIN32
-#define INVALID_PIPE ((Pipe){INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE})
+#   define CYE_INVALID_PIPE ((Pipe){INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE})
 #else
-#define INVALID_PIPE ((Pipe){-1, -1})
+#   define CYE_INVALID_PIPE ((Pipe){-1, -1})
 #endif
 
 static Pipe pipe_open(void) {
@@ -32,7 +32,7 @@ static Pipe pipe_open(void) {
     
     HANDLE read_handle, write_handle;
     if (!CreatePipe(&read_handle, &write_handle, &sa, 0)) {
-        return INVALID_PIPE;
+        return CYE_INVALID_PIPE;
     }
     return (Pipe){
         .read = read_handle,
@@ -41,7 +41,7 @@ static Pipe pipe_open(void) {
 #else
     int pipefd[2];
     if (pipe(pipefd) == -1) {
-        return INVALID_PIPE;
+        return CYE_INVALID_PIPE;
     }
     return (Pipe){
         .read = pipefd[0],
@@ -50,22 +50,22 @@ static Pipe pipe_open(void) {
 #endif
 }
 
-static void pipe_close(Pipe handle) {
-#ifdef _WIN32
-    if (handle.read != INVALID_PIPE_HANDLE) CloseHandle(handle.read);
-    if (handle.write != INVALID_PIPE_HANDLE) CloseHandle(handle.write);
+static void cye_pipe_close(Pipe handle) {
+#ifndef _WIN32
+    if (handle.read != CYE_INVALID_PIPE_HANDLE) close(handle.read);
+    if (handle.write != CYE_INVALID_PIPE_HANDLE) close(handle.write);
 #else
-    if (handle.read != INVALID_PIPE_HANDLE) close(handle.read);
-    if (handle.write != INVALID_PIPE_HANDLE) close(handle.write);
+    if (handle.read != CYE_INVALID_PIPE_HANDLE) CloseHandle(handle.read);
+    if (handle.write != CYE_INVALID_PIPE_HANDLE) CloseHandle(handle.write);
 #endif
 }
 
-static bool pipe_valid(Pipe handle) {
-    return handle.read != INVALID_PIPE_HANDLE &&
-           handle.write != INVALID_PIPE_HANDLE;
+static bool cye_pipe_valid(Pipe handle) {
+    return handle.read != CYE_INVALID_PIPE_HANDLE &&
+           handle.write != CYE_INVALID_PIPE_HANDLE;
 }
 
-static bool pipe_read(Pipe_Handle pipe, char* buffer, size_t buffer_size, size_t* bytes_read) {
+static bool cye_pipe_read(Cye_Pipe_Handle pipe, char* buffer, size_t buffer_size, size_t* bytes_read) {
 #ifdef _WIN32
     DWORD bytes_read_win;
     if (!ReadFile(pipe, buffer, (DWORD)buffer_size, &bytes_read_win, NULL)) {
@@ -85,7 +85,7 @@ static bool pipe_read(Pipe_Handle pipe, char* buffer, size_t buffer_size, size_t
 #endif
 }
 
-static bool pipe_write(Pipe_Handle pipe, const char* buffer, size_t buffer_size, size_t* bytes_written) {
+static bool pipe_write(Cye_Pipe_Handle pipe, const char* buffer, size_t buffer_size, size_t* bytes_written) {
 #ifdef _WIN32
     DWORD bytes_written_win;
     if (!WriteFile(pipe, buffer, (DWORD)buffer_size, &bytes_written_win, NULL)) {
@@ -105,36 +105,36 @@ static bool pipe_write(Pipe_Handle pipe, const char* buffer, size_t buffer_size,
 #endif
 }
 
-static void pipe_close_handle(Pipe_Handle* pipe) {
-    if (*pipe == INVALID_PIPE_HANDLE) return;
+static void cye_pipe_close_handle(Cye_Pipe_Handle* pipe) {
+    if (*pipe == CYE_INVALID_PIPE_HANDLE) return;
 #ifdef _WIN32
     CloseHandle(*pipe);
 #else
     close(*pipe);
 #endif
-    *pipe = INVALID_PIPE_HANDLE;
+    *pipe = CYE_INVALID_PIPE_HANDLE;
 }
 
 typedef struct {
     DString stdout;
     DString stderr;
-} Command_Capture_Result;
+} Cye_Capture_Result;
 
 // Run a command synchronously and capture its stdout and stderr output
 // Returns true on success, false on failure
-static bool cmd_run_sync_capture(Command* cmd, Command_Capture_Result* result) {
+static bool cmd_run_sync_capture(Command* cmd, Cye_Capture_Result* result) {
     bool success = false;
-    Pipe pipe_out = INVALID_PIPE;
-    Pipe pipe_err = INVALID_PIPE;
+    Pipe pipe_out = CYE_INVALID_PIPE;
+    Pipe pipe_err = CYE_INVALID_PIPE;
     
     // Create pipes for stdout and stderr
     pipe_out = pipe_open();
-    if (!pipe_valid(pipe_out)) {
+    if (!cye_pipe_valid(pipe_out)) {
         goto cleanup;
     }
     
     pipe_err = pipe_open();
-    if (!pipe_valid(pipe_err)) {
+    if (!cye_pipe_valid(pipe_err)) {
         goto cleanup;
     }
     
@@ -152,21 +152,21 @@ static bool cmd_run_sync_capture(Command* cmd, Command_Capture_Result* result) {
     }
     
     // Close write ends after starting the process
-    pipe_close_handle(&pipe_out.write);
-    pipe_close_handle(&pipe_err.write);
+    cye_pipe_close_handle(&pipe_out.write);
+    cye_pipe_close_handle(&pipe_err.write);
     
     // Read from both pipes
     char buffer[1024];
     size_t bytes_read;
     
     // Read from stderr
-    while (pipe_read(pipe_err.read, buffer, sizeof(buffer) - 1, &bytes_read) && bytes_read > 0) {
+    while (cye_pipe_read(pipe_err.read, buffer, sizeof(buffer) - 1, &bytes_read) && bytes_read > 0) {
         ds_write_buf(&result->stderr, buffer, bytes_read);
     }
     ds_write_zero(&result->stderr);
     
     // Read from stdout
-    while (pipe_read(pipe_out.read, buffer, sizeof(buffer) - 1, &bytes_read) && bytes_read > 0) {
+    while (cye_pipe_read(pipe_out.read, buffer, sizeof(buffer) - 1, &bytes_read) && bytes_read > 0) {
         ds_write_buf(&result->stdout, buffer, bytes_read);
     }
     ds_write_zero(&result->stdout);
@@ -175,11 +175,11 @@ static bool cmd_run_sync_capture(Command* cmd, Command_Capture_Result* result) {
     success = process_wait(p);
     
 cleanup:
-    if (pipe_valid(pipe_out)) {
-        pipe_close(pipe_out);
+    if (cye_pipe_valid(pipe_out)) {
+        cye_pipe_close(pipe_out);
     }
-    if (pipe_valid(pipe_err)) {
-        pipe_close(pipe_err);
+    if (cye_pipe_valid(pipe_err)) {
+        cye_pipe_close(pipe_err);
     }
     
     return success;
@@ -187,7 +187,7 @@ cleanup:
 
 int test_cmd_capture(void) {
     Command cmd = {0};
-    Command_Capture_Result capture = {0};
+    Cye_Capture_Result capture = {0};
     
     if (!build_tool(&cmd, "echo")) {
         return 1;
@@ -217,8 +217,8 @@ cleanup:
 int test_pipe_tool(void) {
     int result = 0;
     Command cmd = {0};
-    Pipe pipe_out = INVALID_PIPE;
-    Pipe pipe_err = INVALID_PIPE;
+    Pipe pipe_out = CYE_INVALID_PIPE;
+    Pipe pipe_err = CYE_INVALID_PIPE;
     DString ds = {0};
 
     if (!build_tool(&cmd, "echo")) {
@@ -227,12 +227,12 @@ int test_pipe_tool(void) {
 
     const char *message = "Hello";
     pipe_out = pipe_open();
-    if (!pipe_valid(pipe_out)) {
+    if (!cye_pipe_valid(pipe_out)) {
         result_defer(1);
     }
 
     pipe_err = pipe_open();
-    if (!pipe_valid(pipe_err)) {
+    if (!cye_pipe_valid(pipe_err)) {
         result_defer(1);
     }
 
@@ -252,13 +252,13 @@ int test_pipe_tool(void) {
     }
 
     // Close write ends after starting the process
-    pipe_close_handle(&pipe_out.write);
-    pipe_close_handle(&pipe_err.write);
+    cye_pipe_close_handle(&pipe_out.write);
+    cye_pipe_close_handle(&pipe_err.write);
 
     // Read from the stderr pipe
     char buffer[1024];
     size_t bytes_read;
-    while (pipe_read(pipe_err.read, buffer, sizeof(buffer) - 1, &bytes_read) && bytes_read > 0) {
+    while (cye_pipe_read(pipe_err.read, buffer, sizeof(buffer) - 1, &bytes_read) && bytes_read > 0) {
         buffer[bytes_read] = '\0';
         ds_write(&ds, buffer);
     }
@@ -269,7 +269,7 @@ int test_pipe_tool(void) {
     }
 
     // Read from the stdout pipe
-    while (pipe_read(pipe_out.read, buffer, sizeof(buffer) - 1, &bytes_read) && bytes_read > 0) {
+    while (cye_pipe_read(pipe_out.read, buffer, sizeof(buffer) - 1, &bytes_read) && bytes_read > 0) {
         buffer[bytes_read] = '\0';
         ds_write(&ds, buffer);
     }
@@ -291,11 +291,11 @@ int test_pipe_tool(void) {
 defer:
     cmd_free(cmd);
     ds_free(ds);
-    if (pipe_valid(pipe_out)) {
-        pipe_close(pipe_out);
+    if (cye_pipe_valid(pipe_out)) {
+        cye_pipe_close(pipe_out);
     }
-    if (pipe_valid(pipe_err)) {
-        pipe_close(pipe_err);
+    if (cye_pipe_valid(pipe_err)) {
+        cye_pipe_close(pipe_err);
     }
     return result;
 }

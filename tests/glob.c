@@ -21,12 +21,30 @@ int main(void) {
     Cye_Path_DArray matches = {0};
 
     const char *patterns[] = {
-        "*/*.c",
+        "",
+
+        "/*", // TODO, make it work with absolute
+
         "*.h",
-        "*.md",
-        // "*/*/*.c", // FIX: this is returns wrong BUG
+
+        "*/*/*.c",
+        "*/*/*.h",
+        "*/*/*.md",
+
+        "*/*/*/*.c",
+        "*/*/*/*.h",
+        "*/*/*/*.md",
+
+        "*/*/*/*/*.c",
+        "*/*/*/*/*.h",
+        "*/*/*/*/*.md",
+
+        "*/*/*/*/*/*.c",
+        "*/*/*/*/*/*.h",
+        "*/*/*/*/*/*.md",
     };
 
+    printf("---------------------------------------------\n\n");
     for (int idx = 0; idx < count_of(patterns); idx += 1) {
         trace_info("Before cye_temp_data.size = %zu bytes",  cye_temp_data.size);
         ZString pattern = patterns[idx];
@@ -51,7 +69,7 @@ int main(void) {
         temp_rewind(chk_point);
     }
 
-    // exit(1);
+    exit(1);
     return 0;
 }
 

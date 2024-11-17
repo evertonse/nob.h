@@ -1,5 +1,5 @@
 - [ ] Sand-box any extensions being used and put it behind a flag
-- [x] Make Pipe example standard from the library
+- [ ] Make Pipe example be STANDARD in the library
         cmd_run_sync_capture_output_and_reset()
 
 - [x] Path: test expand vars

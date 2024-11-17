@@ -198,6 +198,8 @@ void test_character_classes_error_no_closing_square_bracket(void) {
 
 void test_flag_pathname(void) {
     assert_true(pattern_match("/*a*b*/*c*d*", "/a.b/c.d",        CYE_PATTERN_PATH));
+
+
     assert_true(pattern_match("",             "",                CYE_PATTERN_PATH));
     assert_true(pattern_match("/",            "/",               CYE_PATTERN_PATH));
     assert_false(pattern_match("*",           "/",               CYE_PATTERN_PATH));
@@ -254,10 +256,10 @@ void test_flag_period_and_flag_pathname(void) {
     assert_true(pattern_match("/.hello",       "/.hello",   flags));
     assert_true(pattern_match("/.hel/.lo",     "/.hel/.lo", flags));
     assert_false(pattern_match("/*hel/.lo",    "/.hel/.lo", flags));
-
     assert_true(pattern_match("/*a*b*/*c*d*",  "/ab/cd",    flags));
-
     assert_true(pattern_match("*a*b*/*c*d*",   "ab/cd",     flags));
+
+    assert_true(pattern_match("*/*/*/*.c",     "///.c",     flags));
 
     assert_true(pattern_match("a*/",           "a/",        flags));
     assert_true(pattern_match("a*****/",       "a/",        flags));

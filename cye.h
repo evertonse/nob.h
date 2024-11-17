@@ -3270,46 +3270,12 @@ Cye_Path_DArray cye_list_dir(ZString path) {
 
 
 internal bool cye_glob_filter(const char *path, void *user_data);
-internal int  cye_path_glob_recursive_dirent_recursive(char *pattern, char path[PATH_MAX + 1], Cye_Path_DArray *matches);
+internal int  cye_path_glob_recursive_dirent(char *pattern, char path[PATH_MAX + 1], Cye_Path_DArray *matches);
 internal bool cye_path_glob_recursive(char pattern[PATH_MAX + 1], char path[PATH_MAX + 1], Cye_Path_DArray *matches);
 
-internal bool cye_glob_filter(const char *path, void *user_data) {
-    cye_assert(path != NULL);
-
-    Cye_Glob_Filter_Data data = *(Cye_Glob_Filter_Data*)user_data;
-    Cye_Path_DArray* matches = data.matches;
-    MutString pattern          = data.pattern;
-    MutString pattern_next     = data.pattern_next;
-
-    bool is_last_pattern = pattern_next == NULL;
-
-    ZString path_suffix = strrchr(path,  PATH_SEPARATOR_CHAR);
-    if (path_suffix == NULL) {
-        path_suffix = path;
-    } else {
-        path_suffix += 1;
-    }
-
-    if (!cye_pattern_match(pattern, path_suffix, 0)) {
-        return false;
-    }
-
-    // That includes directories
-    if (is_last_pattern) {
-        return true;
-    }
-
-    if (CYE_FILE_KIND_DIRECTORY == cye_path_file_kind(path)
-        && !cye_is_period_dir(path))
-    {
-        // Must be sure `path` is mutable
-        cye_path_glob_recursive(pattern_next, (MutString) path, matches);
-    }
-    return false;
-}
 
 
-int cye_path_glob_recursive_dirent_recursive(char *pattern, char path[PATH_MAX + 1], Cye_Path_DArray *matches) {
+int cye_path_glob_recursive_dirent(char *pattern, char path[PATH_MAX + 1], Cye_Path_DArray *matches) {
 #ifndef _WIN32
     // Find the first ocurrence of the path separator
     char *pattern_sep = strchr(pattern, PATH_SEPARATOR_CHAR);
@@ -3340,7 +3306,7 @@ int cye_path_glob_recursive_dirent_recursive(char *pattern, char path[PATH_MAX +
                 char *path_end = strchr(path, '\0');
                 strcat(path, PATH_SEPARATOR);
                 strcat(path, dirent->d_name);
-                cye_path_glob_recursive_dirent_recursive(pattern_next, path, matches);
+                cye_path_glob_recursive_dirent(pattern_next, path, matches);
                 *path_end = '\0';
             }
         }
@@ -3349,6 +3315,45 @@ int cye_path_glob_recursive_dirent_recursive(char *pattern, char path[PATH_MAX +
     cye_trace_warn("Windows must use `cye_path_glob_recursive` instead");
 #endif
     return 0;
+}
+
+internal bool cye_glob_filter(const char *path, void *user_data) {
+    cye_assert(path != NULL);
+
+    Cye_Glob_Filter_Data data = *(Cye_Glob_Filter_Data*)user_data;
+    Cye_Path_DArray* matches = data.matches;
+    MutString pattern          = data.pattern;
+    MutString pattern_next     = data.pattern_next;
+
+    bool is_last_pattern = pattern_next == NULL;
+
+    ZString path_suffix = strrchr(path,  PATH_SEPARATOR_CHAR);
+    if (path_suffix == NULL) {
+        path_suffix = path;
+    } else {
+        path_suffix += 1;
+    }
+
+    if (!cye_pattern_match(pattern, path_suffix, 0)) {
+        return false;
+    }
+
+    // That includes directories
+    if (is_last_pattern) {
+        return true;
+    }
+
+    if (CYE_FILE_KIND_DIRECTORY == cye_path_file_kind(path)
+        && !cye_is_period_dir(path))
+    {
+
+        // IMPORTANT: a COPY of the `pattern_next` MUST be given
+        // if you change any byte on the `pattern` string.
+        // right now we're reconstructing anything that meddles with
+        // the pattern_next, but IDK if thats enough!
+        cye_path_glob_recursive(pattern_next, (MutString) path, matches);
+    }
+    return false;
 }
 
 bool cye_path_glob_recursive(char pattern[PATH_MAX + 1], char path[PATH_MAX + 1], Cye_Path_DArray *matches) {
@@ -3366,11 +3371,16 @@ bool cye_path_glob_recursive(char pattern[PATH_MAX + 1], char path[PATH_MAX + 1]
         .matches         = matches
     };
 
-    cye_set_trace_level(CYE_LOG_DEBUG);
     bool result = cye_read_dir_filtered(
         path, (Cye_Path_DArray*)matches,
         true, cye_glob_filter, &data
     );
+
+    // We undo our changes, but only if we did change
+    if (pattern_next != NULL) {
+        *pattern_sep = PATH_SEPARATOR_CHAR;
+    }
+
     return result;
 }
 
@@ -3392,7 +3402,6 @@ Cye_Path_DArray cye_path_tglob(ZString pattern) {
 }
 
 bool cye_path_glob(ZString pattern, Cye_Path_DArray *matches) {
-
     if (!cye_is_pattern_well_formed(pattern)) {
         return false;
     }
@@ -3410,7 +3419,7 @@ bool cye_path_glob(ZString pattern, Cye_Path_DArray *matches) {
     cye_path_glob_recursive(mut_pattern, path, matches);
 
     // NOTE: Not sure which is better or faster, using the filtered thing or raw dirent
-    unused(cye_path_glob_recursive_dirent_recursive);
+    unused(cye_path_glob_recursive_dirent);
     return true;
 }
 
@@ -3634,10 +3643,11 @@ bool cye_zstr_match_pattern(ZString pattern, ZString str) {
 // NOTE: Based on this steal
 // https://github.com/cacharle/globule/blob/d9ac95c55750dcb07dc41e87d4bc760a1ac3032e/src/fnmatch.c#L6C3-L6C4
 bool cye_pattern_match(ZString pattern, ZString text, int flags) {
-    if(!cye_is_pattern_well_formed(pattern)) {
-        cye_trace_warn("Malformed pattern (%s) you may check this prior with `cye_is_pattern_well_formed`", pattern);
-        return false;
-    }
+    // static int depth = 0;
+    // if(!cye_is_pattern_well_formed(pattern) && 0 == depth) {
+    //     cye_trace_warn("Malformed pattern (%s) you may check this prior with `cye_is_pattern_well_formed`", pattern);
+    //     return false;
+    // }
 
     if (flags & CYE_PATTERN_PERIOD && *text == '.' && *pattern != '.') {
         return false;
@@ -4188,7 +4198,23 @@ char *nob_win32_error_message(DWORD err) {
 #define DArray              Cye_DArray
 #define Path_DArray         Cye_Path_DArray
 #define File_Filter         Cye_File_Filter
+
+#define FILE_KIND_REGULAR   CYE_FILE_KIND_REGULAR
+#define FILE_KIND_DIRECTORY CYE_FILE_KIND_DIRECTORY
+#define FILE_KIND_SYMLINK   CYE_FILE_KIND_SYMLINK
+#define FILE_KIND_OTHER     CYE_FILE_KIND_OTHER
 #define File_Kind           Cye_File_Kind
+
+#define GLOB_SYNTAX_ERROR   CYE_GLOB_SYNTAX_ERROR,
+#define GLOB_NO_MATCH       CYE_GLOB_NO_MATCH,
+#define GLOB_MATCHED        CYE_GLOB_MATCHED
+#define Match_Result        Cye_Match_Result
+
+#define PATTERN_NO_ESCAPE   CYE_PATTERN_NO_ESCAPE
+#define PATTERN_PATH        CYE_PATTERN_PATH
+#define PATTERN_PERIOD      CYE_PATTERN_PERIOD
+#define Pattern_Flags       Cye_Pattern_Flags
+
 #define File_Stats          Cye_File_Stats
 #define DString             Cye_DString
 
@@ -4335,6 +4361,10 @@ char *nob_win32_error_message(DWORD err) {
 #define path_renames                       cye_path_renames
 #define path_replace                       cye_path_replace
 #define path_scandir                       cye_path_scandir
+
+#define list_dir                           cye_list_dir
+#define path_glob                          cye_path_glob
+#define path_tglob                         cye_path_tglob
 
 #define file_stats_fmt                     cye_file_stats_fmt
 #define file_stats_fmt_arg                 cye_file_stats_fmt_arg

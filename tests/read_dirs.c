@@ -47,6 +47,12 @@ int main(void) {
     Path_DArray paths = {0};
 
     {
+        read_dir("/bin/", &paths);
+        print_paths();
+        paths.count = 0;
+    }
+
+    {
         read_dir("./build/", &paths);
         print_paths();
     }
