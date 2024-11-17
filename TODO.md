@@ -9,3 +9,6 @@
 - [ ] Make it work with C++
 - [ ] Make cye_malloc count allocations and deallocations
 - [ ] Glob: make `**` ignore `/` boundaries, possibly `.` too
+- [ ] Make Glob test using capoute output
+- [ ] Simplest Regex implementation ?
+- [ ] Way of getting all #include files from a `.h|.c` into a DArray, for caching

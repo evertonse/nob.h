@@ -3359,10 +3359,18 @@ internal bool cye_glob_filter(const char *path, void *user_data) {
 bool cye_path_glob_recursive(char pattern[PATH_MAX + 1], char path[PATH_MAX + 1], Cye_Path_DArray *matches) {
     // Find the first ocurrence of the path separator
     char *pattern_sep = strchr(pattern, PATH_SEPARATOR_CHAR);
+
     char *pattern_next = NULL;
     if (pattern_sep != NULL) {
-        *pattern_sep = '\0';
-        pattern_next = pattern_sep + 1;
+        // That means that we started with '/'
+        if (pattern_sep == pattern) {
+            pattern += 1; // pattern is either an actual pattern or ""
+            pattern_sep = strchr(pattern, PATH_SEPARATOR_CHAR);
+        }
+        if (pattern_sep != NULL) {
+            *pattern_sep = '\0';
+            pattern_next = pattern_sep + 1;
+        }
     }
 
     Cye_Glob_Filter_Data data = {

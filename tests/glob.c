@@ -24,6 +24,7 @@ int main(void) {
         "",
 
         "/*", // TODO, make it work with absolute
+        "/bin/*", // TODO, make it work with absolute
 
         "*.h",
 

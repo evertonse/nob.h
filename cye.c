@@ -4,10 +4,10 @@
 
 const char *test_names[] = {
     "glob",
+    "read_dirs",
     "matching",
     "path",
     "dynamic_array",
-    "read_dirs",
     "sort",
     "making_files",
     "making_dirs",
